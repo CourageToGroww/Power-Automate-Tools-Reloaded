@@ -275,8 +275,10 @@ export const FlowFailuresPage: React.FC = () => {
   );
 
   const onItemClicked = (item: FlowFailure) => {
+    console.log('[FlowFailuresPage] Item clicked:', item);
     selectFailure(item);
     setIsPanelOpen(true);
+    console.log('[FlowFailuresPage] Panel opened, isLoadingDetails:', isLoadingDetails);
   };
 
   const onPanelDismiss = () => {
@@ -320,6 +322,10 @@ export const FlowFailuresPage: React.FC = () => {
         headerText={selectedFailure ? `Flow Run Details - ${selectedFailure.runId}` : 'Flow Run Details'}
         isBlocking={false}
       >
+        {(() => {
+          console.log('[FlowFailuresPage] Panel render - isLoadingDetails:', isLoadingDetails, 'selectedRunDetails:', !!selectedRunDetails, 'editorContent length:', editorContent.length);
+          return null;
+        })()}
         {isLoadingDetails ? (
           <Stack horizontalAlign="center" verticalAlign="center" styles={{ root: { height: '200px' } }}>
             <Spinner size={SpinnerSize.large} />
