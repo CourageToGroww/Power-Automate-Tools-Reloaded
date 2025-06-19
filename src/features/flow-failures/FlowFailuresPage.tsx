@@ -97,43 +97,63 @@ export const FlowFailuresPage: React.FC = () => {
       const content = model.getValue();
       const lines = content.split('\n');
 
-      // Find and highlight failed actions
-      selectedFailure.failedActions.forEach(failedAction => {
-        // Find the line range for this action
-        const actionStartPattern = new RegExp(`"${failedAction.name}"\\s*:\\s*{`);
-        let startLine = -1;
-        let endLine = -1;
-        let braceCount = 0;
-        let foundStart = false;
+      // Find and highlight failed/skipped actions by looking for specific patterns
+      const failedActionPatterns = [
+        /"status":\s*"Failed"/g,
+        /"status":\s*"ActionSkipped"/g,
+        /"code":\s*"ActionSkipped"/g,
+        /"error":\s*{/g
+      ];
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
+      failedActionPatterns.forEach(pattern => {
+        let match;
+        while ((match = pattern.exec(content)) !== null) {
+          const position = model.getPositionAt(match.index);
           
-          if (!foundStart && actionStartPattern.test(line)) {
-            startLine = i + 1; // Monaco uses 1-based line numbers
-            foundStart = true;
-            braceCount = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-            continue;
-          }
-
-          if (foundStart) {
-            braceCount += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
-            if (braceCount === 0) {
-              endLine = i + 1;
+          // Find the containing action block by looking backwards and forwards
+          let startLine = position.lineNumber;
+          let endLine = position.lineNumber;
+          
+          // Look backwards to find the start of the action block
+          for (let i = position.lineNumber - 1; i >= 1; i--) {
+            const line = model.getLineContent(i);
+            if (line.includes('"id":') || line.includes('"runName":') || line.includes('"type":')) {
+              startLine = i;
+              break;
+            }
+            if (line.trim().match(/^"[^"]+"\s*:\s*{/)) {
+              startLine = i;
               break;
             }
           }
-        }
+          
+          // Look forwards to find the end of the action block
+          let braceCount = 0;
+          let foundActionStart = false;
+          for (let i = startLine; i <= model.getLineCount(); i++) {
+            const line = model.getLineContent(i);
+            if (line.includes('{')) {
+              braceCount += (line.match(/\{/g) || []).length;
+              foundActionStart = true;
+            }
+            if (line.includes('}')) {
+              braceCount -= (line.match(/\}/g) || []).length;
+            }
+            if (foundActionStart && braceCount === 0) {
+              endLine = i;
+              break;
+            }
+          }
 
-        if (startLine > 0 && endLine > 0) {
+          // Add highlighting for this failed action block
           decorations.push({
-            range: new monaco.Range(startLine, 1, endLine, 1),
+            range: new monaco.Range(startLine, 1, endLine, model.getLineMaxColumn(endLine)),
             options: {
               isWholeLine: true,
               className: 'failed-action-highlight',
               glyphMarginClassName: 'failed-action-glyph',
               hoverMessage: {
-                value: `**Failed Action: ${failedAction.name}**\n\nStatus: ${failedAction.status}\nError: ${failedAction.error?.message || 'Unknown error'}`
+                value: `**Failed/Skipped Action**\n\nThis action failed or was skipped. Check the status and error details.`
               }
             }
           });
@@ -147,11 +167,11 @@ export const FlowFailuresPage: React.FC = () => {
       const style = document.createElement('style');
       style.textContent = `
         .failed-action-highlight {
-          background-color: rgba(255, 0, 0, 0.1) !important;
-          border-left: 3px solid #ff0000 !important;
+          background-color: rgba(255, 99, 99, 0.15) !important;
+          border-left: 3px solid #ff6b6b !important;
         }
         .failed-action-glyph {
-          background-color: #ff0000 !important;
+          background-color: #ff6b6b !important;
           width: 4px !important;
         }
         .failed-action-glyph::after {
@@ -341,7 +361,7 @@ export const FlowFailuresPage: React.FC = () => {
               <Text variant="small">
                 {debugMode 
                   ? 'Debug Mode: Showing raw API response. Check browser console for detailed logs.'
-                  : 'Failed actions are highlighted in red with error details on hover.'}
+                  : 'Failed actions are highlighted in light red with error details on hover.'}
               </Text>
               {debugMode && (
                 <Text variant="small" style={{ color: '#d13438', fontWeight: 'bold' }}>
