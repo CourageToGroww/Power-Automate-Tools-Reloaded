@@ -1,0 +1,207 @@
+import { MessageBarType } from "@fluentui/react/lib/MessageBar";
+import { useEffect, useState } from "react";
+import { useMessageBar } from "../../common/components/Messages";
+import { useApiProviderContext } from "../../common/providers/ApiProvider";
+import { FlowFailure, FlowRun, FlowRunDetails, FlowRunAction } from "./types";
+
+const DEBUG = true;
+
+function debugLog(...args: any[]) {
+  if (DEBUG) {
+    console.log('[PA-Tools FlowFailures]', ...args);
+  }
+}
+
+function debugError(...args: any[]) {
+  if (DEBUG) {
+    console.error('[PA-Tools FlowFailures Error]', ...args);
+  }
+}
+
+export const useFlowFailures = () => {
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [failures, setFailures] = useState<FlowFailure[]>([]);
+  const [selectedFailure, setSelectedFailure] = useState<FlowFailure | null>(null);
+  const [selectedRunDetails, setSelectedRunDetails] = useState<FlowRunDetails | null>(null);
+  const [isLoadingDetails, setIsLoadingDetails] = useState<boolean>(false);
+
+  const api = useApiProviderContext();
+  const query = new URLSearchParams(location.search);
+
+  const envId = query.get("envId");
+  const flowId = query.get("flowId");
+
+  debugLog('Flow failures initialized with envId:', envId, 'flowId:', flowId);
+
+  const messageBar = useMessageBar();
+
+  const addMessage = (msg: string | string[], type?: MessageBarType) => {
+    debugLog('Adding message:', msg, 'type:', type);
+    messageBar.setMessages([
+      {
+        key: Date.now().toString(),
+        messageBarType: type || MessageBarType.success,
+        isMultiline: typeof msg !== "string",
+        children: msg,
+      },
+    ]);
+  };
+
+  // Fetch flow run history and filter for failures
+  const fetchFlowFailures = async () => {
+    if (!envId || !flowId || !api.isApiReady) {
+      return;
+    }
+
+    try {
+      debugLog('Fetching flow run history...');
+      setIsLoading(true);
+
+      const runsUrl = getFlowRunsUrl(envId, flowId);
+      debugLog('Flow runs URL:', runsUrl);
+
+      const runsResponse = await api.get(runsUrl);
+      debugLog('Flow runs response received:', {
+        totalRuns: runsResponse.value?.length || 0,
+      });
+
+      if (!runsResponse.value || !Array.isArray(runsResponse.value)) {
+        throw new Error('Invalid runs response - missing or invalid value array');
+      }
+
+      const runs: FlowRun[] = runsResponse.value;
+      
+      // Filter for failed runs
+      const failedRuns = runs.filter(run => run.properties.status === 'Failed');
+      debugLog('Failed runs found:', failedRuns.length);
+
+      // Convert to FlowFailure objects with basic info
+      const flowFailures: FlowFailure[] = failedRuns.map(run => ({
+        runId: run.name,
+        runName: run.name,
+        startTime: run.properties.startTime,
+        endTime: run.properties.endTime,
+        status: run.properties.status,
+        failedActions: [], // Will be populated when details are fetched
+        triggerFailed: run.properties.trigger?.status === 'Failed',
+        clientTrackingId: run.properties.correlation.clientTrackingId,
+      }));
+
+      setFailures(flowFailures);
+
+      if (flowFailures.length === 0) {
+        addMessage('No failed flow runs found.', MessageBarType.info);
+      } else {
+        addMessage(`Found ${flowFailures.length} failed flow runs.`);
+      }
+
+    } catch (error) {
+      debugError('Error fetching flow failures:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addMessage(
+        `Error loading flow failures: ${errorMessage}`,
+        MessageBarType.error
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch detailed information for a specific failed run
+  const fetchRunDetails = async (runId: string) => {
+    if (!envId || !flowId || !api.isApiReady) {
+      return;
+    }
+
+    try {
+      debugLog('Fetching run details for:', runId);
+      setIsLoadingDetails(true);
+
+      const runDetailsUrl = getFlowRunDetailsUrl(envId, flowId, runId);
+      debugLog('Run details URL:', runDetailsUrl);
+
+      const runDetails: FlowRunDetails = await api.get(runDetailsUrl);
+      debugLog('Run details received:', {
+        runId: runDetails.name,
+        status: runDetails.properties.status,
+        hasActions: !!runDetails.properties.actions,
+        actionCount: runDetails.properties.actions ? Object.keys(runDetails.properties.actions).length : 0,
+      });
+
+      // Find failed actions
+      const failedActions: FlowRunAction[] = [];
+      
+      // Check if trigger failed
+      if (runDetails.properties.trigger?.status === 'Failed') {
+        failedActions.push(runDetails.properties.trigger);
+      }
+
+      // Check actions for failures
+      if (runDetails.properties.actions) {
+        Object.values(runDetails.properties.actions).forEach(action => {
+          if (action.status === 'Failed') {
+            failedActions.push(action);
+          }
+        });
+      }
+
+      debugLog('Failed actions found:', failedActions.length);
+
+      // Update the failure with detailed action information
+      setFailures(prev => prev.map(failure => 
+        failure.runId === runId 
+          ? { ...failure, failedActions }
+          : failure
+      ));
+
+      setSelectedRunDetails(runDetails);
+
+    } catch (error) {
+      debugError('Error fetching run details:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addMessage(
+        `Error loading run details: ${errorMessage}`,
+        MessageBarType.error
+      );
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  };
+
+  // Load failures on component mount
+  useEffect(() => {
+    if (envId && flowId && api.isApiReady) {
+      fetchFlowFailures();
+    }
+  }, [envId, flowId, api.isApiReady]);
+
+  const selectFailure = (failure: FlowFailure) => {
+    setSelectedFailure(failure);
+    fetchRunDetails(failure.runId);
+  };
+
+  const refreshFailures = () => {
+    setSelectedFailure(null);
+    setSelectedRunDetails(null);
+    fetchFlowFailures();
+  };
+
+  return {
+    isLoading,
+    isLoadingDetails,
+    failures,
+    selectedFailure,
+    selectedRunDetails,
+    selectFailure,
+    refreshFailures,
+    ...messageBar,
+  };
+};
+
+function getFlowRunsUrl(envId: string, flowId: string) {
+  return `providers/Microsoft.ProcessSimple/environments/${envId}/flows/${flowId}/runs`;
+}
+
+function getFlowRunDetailsUrl(envId: string, flowId: string, runId: string) {
+  return `providers/Microsoft.ProcessSimple/environments/${envId}/flows/${flowId}/runs/${runId}`;
+} 

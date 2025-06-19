@@ -13,6 +13,7 @@ import {
   ApiProviderContextRoot
 } from './common/providers/ApiProvider';
 import { FlowEditorPage } from './features/flow-editor/FlowEditorPage';
+import { FlowFailuresPage } from './features/flow-failures/FlowFailuresPage';
 import { useEffect, useState } from 'react';
 
 initMonaco();
@@ -112,6 +113,7 @@ function App() {
             <Routes>
               <Route path="/">
                 <Route index element={<FlowEditorPage />} />
+                <Route path="failures" element={<FlowFailuresPage />} />
               </Route>
             </Routes>
           ) : !authError ? (
