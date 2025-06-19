@@ -25,6 +25,7 @@ export const useFlowFailures = () => {
   const [selectedRunDetails, setSelectedRunDetails] = useState<FlowRunDetails | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState<boolean>(false);
   const [showAllRuns, setShowAllRuns] = useState<boolean>(false);
+  const [debugMode, setDebugMode] = useState<boolean>(false);
 
   const api = useApiProviderContext();
   const query = new URLSearchParams(location.search);
@@ -142,7 +143,51 @@ export const useFlowFailures = () => {
         status: runDetails.properties.status,
         hasActions: !!runDetails.properties.actions,
         actionCount: runDetails.properties.actions ? Object.keys(runDetails.properties.actions).length : 0,
+        fullRunDetails: runDetails, // Log the full response for debugging
       });
+
+      // If no actions but run failed, try to get action details from a different endpoint
+      if ((!runDetails.properties.actions || Object.keys(runDetails.properties.actions).length === 0) && 
+          runDetails.properties.status === 'Failed') {
+        debugLog('No actions found but run failed - trying alternative endpoints...');
+        
+        try {
+          // Try to get run actions from the actions endpoint
+          const actionsUrl = `${getFlowRunDetailsUrl(envId, flowId, runId)}/actions`;
+          debugLog('Trying actions URL:', actionsUrl);
+          const actionsResponse = await api.get(actionsUrl);
+          debugLog('Actions response:', actionsResponse);
+          
+          if (actionsResponse.value && Array.isArray(actionsResponse.value)) {
+            // Convert actions array to object format
+            const actionsObject: { [key: string]: FlowRunAction } = {};
+            actionsResponse.value.forEach((action: any) => {
+              if (action.name) {
+                actionsObject[action.name] = action;
+              }
+            });
+            runDetails.properties.actions = actionsObject;
+            debugLog('Successfully populated actions from actions endpoint:', Object.keys(actionsObject));
+          }
+        } catch (actionsError) {
+          debugLog('Failed to fetch from actions endpoint:', actionsError);
+          
+          // Try another approach - get the run history with more details
+          try {
+            const detailedRunUrl = `${getFlowRunDetailsUrl(envId, flowId, runId)}?$expand=properties/trigger,properties/actions`;
+            debugLog('Trying detailed run URL:', detailedRunUrl);
+            const detailedRun = await api.get(detailedRunUrl);
+            debugLog('Detailed run response:', detailedRun);
+            
+            if (detailedRun.properties?.actions) {
+              runDetails.properties.actions = detailedRun.properties.actions;
+              debugLog('Successfully populated actions from detailed run endpoint');
+            }
+          } catch (detailedError) {
+            debugLog('Failed to fetch detailed run:', detailedError);
+          }
+        }
+      }
 
       // Find failed actions
       const failedActions: FlowRunAction[] = [];
@@ -210,6 +255,10 @@ export const useFlowFailures = () => {
     setTimeout(() => fetchFlowFailures(), 100);
   };
 
+  const toggleDebugMode = () => {
+    setDebugMode(!debugMode);
+  };
+
   return {
     isLoading,
     isLoadingDetails,
@@ -217,9 +266,11 @@ export const useFlowFailures = () => {
     selectedFailure,
     selectedRunDetails,
     showAllRuns,
+    debugMode,
     selectFailure,
     refreshFailures,
     toggleShowAllRuns,
+    toggleDebugMode,
     ...messageBar,
   };
 };
