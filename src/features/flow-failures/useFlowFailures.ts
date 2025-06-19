@@ -24,6 +24,7 @@ export const useFlowFailures = () => {
   const [selectedFailure, setSelectedFailure] = useState<FlowFailure | null>(null);
   const [selectedRunDetails, setSelectedRunDetails] = useState<FlowRunDetails | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState<boolean>(false);
+  const [showAllRuns, setShowAllRuns] = useState<boolean>(false);
 
   const api = useApiProviderContext();
   const query = new URLSearchParams(location.search);
@@ -71,12 +72,25 @@ export const useFlowFailures = () => {
 
       const runs: FlowRun[] = runsResponse.value;
       
-      // Filter for failed runs
-      const failedRuns = runs.filter(run => run.properties.status === 'Failed');
-      debugLog('Failed runs found:', failedRuns.length);
+      // Log all runs for debugging
+      debugLog('All runs:', runs.map(run => ({
+        id: run.name,
+        status: run.properties.status,
+        triggerStatus: run.properties.trigger?.status,
+        startTime: run.properties.startTime
+      })));
+
+      // Filter runs based on showAllRuns toggle
+      const filteredRuns = showAllRuns 
+        ? runs 
+        : runs.filter(run => 
+            run.properties.status === 'Failed' || 
+            run.properties.trigger?.status === 'Failed'
+          );
+      debugLog('Filtered runs found:', filteredRuns.length, 'showAllRuns:', showAllRuns);
 
       // Convert to FlowFailure objects with basic info
-      const flowFailures: FlowFailure[] = failedRuns.map(run => ({
+      const flowFailures: FlowFailure[] = filteredRuns.map(run => ({
         runId: run.name,
         runName: run.name,
         startTime: run.properties.startTime,
@@ -90,9 +104,11 @@ export const useFlowFailures = () => {
       setFailures(flowFailures);
 
       if (flowFailures.length === 0) {
-        addMessage('No failed flow runs found.', MessageBarType.info);
+        addMessage(showAllRuns ? 'No flow runs found.' : 'No failed flow runs found.', MessageBarType.info);
       } else {
-        addMessage(`Found ${flowFailures.length} failed flow runs.`);
+        addMessage(showAllRuns 
+          ? `Found ${flowFailures.length} flow runs.` 
+          : `Found ${flowFailures.length} failed flow runs.`);
       }
 
     } catch (error) {
@@ -186,14 +202,24 @@ export const useFlowFailures = () => {
     fetchFlowFailures();
   };
 
+  const toggleShowAllRuns = () => {
+    setShowAllRuns(!showAllRuns);
+    setSelectedFailure(null);
+    setSelectedRunDetails(null);
+    // Refetch with new filter
+    setTimeout(() => fetchFlowFailures(), 100);
+  };
+
   return {
     isLoading,
     isLoadingDetails,
     failures,
     selectedFailure,
     selectedRunDetails,
+    showAllRuns,
     selectFailure,
     refreshFailures,
+    toggleShowAllRuns,
     ...messageBar,
   };
 };

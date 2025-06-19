@@ -42,8 +42,10 @@ export const FlowFailuresPage: React.FC = () => {
     failures,
     selectedFailure,
     selectedRunDetails,
+    showAllRuns,
     selectFailure,
     refreshFailures,
+    toggleShowAllRuns,
     messages,
     onDismissed,
   } = useFlowFailures();
@@ -54,12 +56,25 @@ export const FlowFailuresPage: React.FC = () => {
 
     const runData = {
       runId: selectedRunDetails.name,
+      type: selectedRunDetails.type,
       status: selectedRunDetails.properties.status,
       startTime: selectedRunDetails.properties.startTime,
       endTime: selectedRunDetails.properties.endTime,
-      clientTrackingId: selectedRunDetails.properties.correlation.clientTrackingId,
-      trigger: selectedRunDetails.properties.trigger,
+      duration: selectedRunDetails.properties.endTime 
+        ? `${Math.round((new Date(selectedRunDetails.properties.endTime).getTime() - new Date(selectedRunDetails.properties.startTime).getTime()) / 1000)}s`
+        : 'N/A',
+      correlation: selectedRunDetails.properties.correlation,
+      trigger: {
+        ...selectedRunDetails.properties.trigger,
+        // Add more trigger details
+        hasInputsLink: !!selectedRunDetails.properties.trigger.inputsLink,
+        hasOutputsLink: !!selectedRunDetails.properties.trigger.outputsLink,
+        inputsSize: selectedRunDetails.properties.trigger.inputsLink?.contentSize || 0,
+        outputsSize: selectedRunDetails.properties.trigger.outputsLink?.contentSize || 0,
+      },
       actions: selectedRunDetails.properties.actions || {},
+      actionCount: selectedRunDetails.properties.actions ? Object.keys(selectedRunDetails.properties.actions).length : 0,
+      outputs: selectedRunDetails.properties.outputs || null,
     };
 
     return JSON.stringify(runData, null, 2);
@@ -187,6 +202,17 @@ export const FlowFailuresPage: React.FC = () => {
       minWidth: 80,
       maxWidth: 100,
       isResizable: true,
+      onRender: (item: FlowFailure) => {
+        const isActualFailure = item.status === 'Failed' || item.triggerFailed;
+        return (
+          <span style={{ 
+            color: isActualFailure ? '#d13438' : 'inherit',
+            fontWeight: isActualFailure ? 'bold' : 'normal'
+          }}>
+            {item.status}
+          </span>
+        );
+      },
     },
     {
       key: 'failedActions',
@@ -214,6 +240,14 @@ export const FlowFailuresPage: React.FC = () => {
     () =>
       [
         {
+          key: 'toggle',
+          text: showAllRuns ? 'Show Failed Only' : 'Show All Runs',
+          iconProps: {
+            iconName: showAllRuns ? 'Filter' : 'ClearFilter',
+          },
+          onClick: toggleShowAllRuns,
+        },
+        {
           key: 'refresh',
           text: 'Refresh',
           iconProps: {
@@ -222,7 +256,7 @@ export const FlowFailuresPage: React.FC = () => {
           onClick: refreshFailures,
         },
       ] as ICommandBarItemProps[],
-    [refreshFailures]
+    [refreshFailures, toggleShowAllRuns, showAllRuns]
   );
 
   const onItemClicked = (item: FlowFailure) => {
@@ -244,8 +278,14 @@ export const FlowFailuresPage: React.FC = () => {
       <div className={listContainerClassName}>
         {failures.length === 0 && !isLoading ? (
           <Stack horizontalAlign="center" verticalAlign="center" styles={{ root: { height: '200px' } }}>
-            <Text variant="large">No failed flow runs found.</Text>
-            <Text variant="medium">This flow hasn't had any failures recently.</Text>
+            <Text variant="large">
+              {showAllRuns ? 'No flow runs found.' : 'No failed flow runs found.'}
+            </Text>
+            <Text variant="medium">
+              {showAllRuns 
+                ? 'This flow has no run history.' 
+                : 'This flow hasn\'t had any failures recently. Try "Show All Runs" to see all runs.'}
+            </Text>
           </Stack>
         ) : (
           <DetailsList
