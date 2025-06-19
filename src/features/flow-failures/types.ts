@@ -59,6 +59,29 @@ export interface FlowRunAction {
     message: string;
   };
   trackedProperties?: any;
+  inputsLink?: {
+    uri: string;
+    contentVersion: string;
+    contentSize: number;
+    contentHash: {
+      algorithm: string;
+      value: string;
+    };
+  };
+  outputsLink?: {
+    uri: string;
+    contentVersion: string;
+    contentSize: number;
+    contentHash: {
+      algorithm: string;
+      value: string;
+    };
+  };
+  scheduledTime?: string;
+  originHistoryName?: string;
+  correlation?: {
+    clientTrackingId: string;
+  };
 }
 
 export interface FlowRunDetails {
