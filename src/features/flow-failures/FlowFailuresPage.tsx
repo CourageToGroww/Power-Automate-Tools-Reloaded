@@ -161,23 +161,26 @@ export const FlowFailuresPage: React.FC = () => {
       });
 
       // Apply decorations
-      editor.deltaDecorations([], decorations);
+      const decorationIds = editor.deltaDecorations([], decorations);
+      console.log('[FlowFailuresPage] Applied decorations:', decorations.length, 'decoration IDs:', decorationIds);
 
       // Add custom CSS for highlighting
       const style = document.createElement('style');
       style.textContent = `
         .failed-action-highlight {
-          background-color: rgba(255, 99, 99, 0.15) !important;
-          border-left: 3px solid #ff6b6b !important;
+          background-color: rgba(255, 99, 99, 0.2) !important;
+          border-left: 4px solid #ff6b6b !important;
+          margin-left: -4px !important;
         }
         .failed-action-glyph {
           background-color: #ff6b6b !important;
-          width: 4px !important;
+          width: 6px !important;
         }
         .failed-action-glyph::after {
           content: "⚠" !important;
           color: white !important;
           font-weight: bold !important;
+          font-size: 12px !important;
         }
       `;
       
@@ -369,21 +372,54 @@ export const FlowFailuresPage: React.FC = () => {
                 </Text>
               )}
             </Stack>
-            <Editor
-              value={editorContent}
-              language="json"
-              onMount={(editor) => setEditor(editor)}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 14,
-                wordWrap: 'on',
-                automaticLayout: true,
-                folding: true,
-                lineNumbers: 'on',
-              }}
-            />
+            <div style={{ height: '600px', border: '1px solid #ccc', overflow: 'hidden' }}>
+              <Editor
+                value={editorContent}
+                language="json"
+                onMount={(editor) => {
+                  console.log('[FlowFailuresPage] Monaco editor mounted:', !!editor);
+                  setEditor(editor);
+                }}
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 14,
+                  wordWrap: 'on',
+                  automaticLayout: true,
+                  folding: true,
+                  lineNumbers: 'on',
+                  scrollbar: {
+                    vertical: 'visible',
+                    horizontal: 'visible',
+                    verticalScrollbarSize: 17,
+                    horizontalScrollbarSize: 17,
+                  },
+                  mouseWheelScrollSensitivity: 1,
+                  fastScrollSensitivity: 5,
+                  selectOnLineNumbers: false,
+                  selectionHighlight: false,
+                  occurrencesHighlight: false,
+                  renderLineHighlight: 'none',
+                }}
+              />
+            </div>
+            {/* Emergency fallback if Monaco doesn't work */}
+            {editorContent && (
+              <details style={{ marginTop: '10px' }}>
+                <summary>Show JSON (fallback view)</summary>
+                <pre style={{ 
+                  backgroundColor: '#f5f5f5', 
+                  padding: '10px', 
+                  overflow: 'auto',
+                  maxHeight: '400px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace'
+                }}>
+                  {editorContent}
+                </pre>
+              </details>
+            )}
           </div>
         ) : (
           <Text>No run details available.</Text>
