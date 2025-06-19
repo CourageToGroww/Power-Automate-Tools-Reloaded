@@ -229,12 +229,12 @@ export const useFlowFailures = () => {
     }
   };
 
-  // Load failures on component mount
+  // Load failures on component mount and when showAllRuns changes
   useEffect(() => {
     if (envId && flowId && api.isApiReady) {
       fetchFlowFailures();
     }
-  }, [envId, flowId, api.isApiReady]);
+  }, [envId, flowId, api.isApiReady, showAllRuns]);
 
   const selectFailure = (failure: FlowFailure) => {
     setSelectedFailure(failure);
@@ -248,11 +248,11 @@ export const useFlowFailures = () => {
   };
 
   const toggleShowAllRuns = () => {
+    debugLog('Toggling showAllRuns from', showAllRuns, 'to', !showAllRuns);
     setShowAllRuns(!showAllRuns);
     setSelectedFailure(null);
     setSelectedRunDetails(null);
-    // Refetch with new filter
-    setTimeout(() => fetchFlowFailures(), 100);
+    // The useEffect will handle refetching when showAllRuns changes
   };
 
   const toggleDebugMode = () => {
