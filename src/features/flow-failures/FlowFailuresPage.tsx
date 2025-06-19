@@ -43,9 +43,11 @@ export const FlowFailuresPage: React.FC = () => {
     selectedFailure,
     selectedRunDetails,
     showAllRuns,
+    debugMode,
     selectFailure,
     refreshFailures,
     toggleShowAllRuns,
+    toggleDebugMode,
     messages,
     onDismissed,
   } = useFlowFailures();
@@ -53,6 +55,11 @@ export const FlowFailuresPage: React.FC = () => {
   // Prepare the JSON content for the editor with failed actions highlighted
   const editorContent = useMemo(() => {
     if (!selectedRunDetails) return '';
+
+    if (debugMode) {
+      // In debug mode, show the raw API response
+      return JSON.stringify(selectedRunDetails, null, 2);
+    }
 
     const runData = {
       runId: selectedRunDetails.name,
@@ -78,7 +85,7 @@ export const FlowFailuresPage: React.FC = () => {
     };
 
     return JSON.stringify(runData, null, 2);
-  }, [selectedRunDetails]);
+  }, [selectedRunDetails, debugMode]);
 
   // Highlight failed actions in the editor
   useEffect(() => {
@@ -248,6 +255,14 @@ export const FlowFailuresPage: React.FC = () => {
           onClick: toggleShowAllRuns,
         },
         {
+          key: 'debug',
+          text: debugMode ? 'Hide Debug' : 'Debug Mode',
+          iconProps: {
+            iconName: debugMode ? 'Bug' : 'BugSolid',
+          },
+          onClick: toggleDebugMode,
+        },
+        {
           key: 'refresh',
           text: 'Refresh',
           iconProps: {
@@ -256,7 +271,7 @@ export const FlowFailuresPage: React.FC = () => {
           onClick: refreshFailures,
         },
       ] as ICommandBarItemProps[],
-    [refreshFailures, toggleShowAllRuns, showAllRuns]
+    [refreshFailures, toggleShowAllRuns, showAllRuns, toggleDebugMode, debugMode]
   );
 
   const onItemClicked = (item: FlowFailure) => {
@@ -318,8 +333,15 @@ export const FlowFailuresPage: React.FC = () => {
                 {selectedFailure?.triggerFailed ? ' (+ Trigger Failed)' : ''}
               </Text>
               <Text variant="small">
-                Failed actions are highlighted in red with error details on hover.
+                {debugMode 
+                  ? 'Debug Mode: Showing raw API response. Check browser console for detailed logs.'
+                  : 'Failed actions are highlighted in red with error details on hover.'}
               </Text>
+              {debugMode && (
+                <Text variant="small" style={{ color: '#d13438', fontWeight: 'bold' }}>
+                  If actions are empty but run failed, check console for alternative endpoint attempts.
+                </Text>
+              )}
             </Stack>
             <Editor
               value={editorContent}
