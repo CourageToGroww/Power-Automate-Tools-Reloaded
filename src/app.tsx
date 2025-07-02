@@ -13,9 +13,10 @@ import {
   ApiProviderContextRoot
 } from './common/providers/ApiProvider';
 import { FlowEditorPage } from './features/flow-editor/FlowEditorPage';
-import { FlowFailuresPage } from './features/flow-failures/FlowFailuresPage';
+import { PreviousRunsPage } from './features/previous-runs/PreviousRunsPage';
 import { AIAssistancePage } from './features/ai-assistance/AIAssistancePage';
 import { useEffect, useState } from 'react';
+import './styles/globals.css';
 
 initMonaco();
 
@@ -114,7 +115,7 @@ function App() {
             <Routes>
               <Route path="/">
                 <Route index element={<FlowEditorPage />} />
-                <Route path="failures" element={<FlowFailuresPage />} />
+                <Route path="failures" element={<PreviousRunsPage />} />
                 <Route path="ai-assistance" element={<AIAssistancePage />} />
               </Route>
             </Routes>

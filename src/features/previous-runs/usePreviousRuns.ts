@@ -18,13 +18,13 @@ function debugError(...args: any[]) {
   }
 }
 
-export const useFlowFailures = () => {
+export const usePreviousRuns = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [failures, setFailures] = useState<FlowFailure[]>([]);
   const [selectedFailure, setSelectedFailure] = useState<FlowFailure | null>(null);
   const [selectedRunDetails, setSelectedRunDetails] = useState<FlowRunDetails | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState<boolean>(false);
-  const [showAllRuns, setShowAllRuns] = useState<boolean>(false);
+  const [showAllRuns, setShowAllRuns] = useState<boolean>(true);
   const [debugMode, setDebugMode] = useState<boolean>(false);
 
   const api = useApiProviderContext();
