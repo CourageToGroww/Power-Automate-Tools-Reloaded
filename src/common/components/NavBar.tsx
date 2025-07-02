@@ -51,7 +51,7 @@ export const NavBar: React.FC = () => {
           headersOnly={true}
         >
           <PivotItem headerText="Flow Editor" itemKey="editor" />
-          <PivotItem headerText="Previous Flows" itemKey="failures" />
+          <PivotItem headerText="Previous Runs" itemKey="failures" />
           <PivotItem headerText="AI Assistance" itemKey="ai-assistance" />
         </Pivot>
       </div>
