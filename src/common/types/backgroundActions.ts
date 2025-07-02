@@ -12,4 +12,12 @@ export interface TokenChanged {
   apiUrl: string;
 }
 
-export type Actions = RefreshInitiator | TokenChanged | AppLoaded;
+export interface AIApiCall {
+  type: 'ai-api-call';
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+export type Actions = RefreshInitiator | TokenChanged | AppLoaded | AIApiCall;
