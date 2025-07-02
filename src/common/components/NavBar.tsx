@@ -25,11 +25,14 @@ export const NavBar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const currentTab = location.pathname === '/failures' ? 'failures' : 'editor';
+  const currentTab = location.pathname === '/failures' ? 'failures' : 
+                    location.pathname === '/ai-assistance' ? 'ai-assistance' : 'editor';
 
   const onTabChange = (item?: PivotItem) => {
     if (item?.props.itemKey === 'failures') {
       navigate('/failures');
+    } else if (item?.props.itemKey === 'ai-assistance') {
+      navigate('/ai-assistance');
     } else {
       navigate('/');
     }
@@ -48,7 +51,8 @@ export const NavBar: React.FC = () => {
           headersOnly={true}
         >
           <PivotItem headerText="Flow Editor" itemKey="editor" />
-          <PivotItem headerText="Flow Failures" itemKey="failures" />
+          <PivotItem headerText="Previous Flows" itemKey="failures" />
+          <PivotItem headerText="AI Assistance" itemKey="ai-assistance" />
         </Pivot>
       </div>
     </Stack>

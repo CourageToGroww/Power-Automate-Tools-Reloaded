@@ -271,6 +271,7 @@ export const useFlowFailures = () => {
     refreshFailures,
     toggleShowAllRuns,
     toggleDebugMode,
+    addMessage,
     ...messageBar,
   };
 };

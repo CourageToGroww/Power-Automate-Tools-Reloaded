@@ -1,7 +1,7 @@
 # NavBar Component Documentation
 
 ## Purpose and Functionality Overview
-Navigation bar component that provides application branding and tab-based navigation between different features of the Power Automate Tools extension. Supports routing between Flow Editor and Flow Failures pages.
+Navigation bar component that provides application branding and tab-based navigation between different features of the Power Automate Tools extension. Supports routing between Flow Editor, Flow Failures, and AI Assistance pages.
 
 ## Dependencies and Imports
 - `@fluentui/react/lib/Icon` - Icon component for branding
@@ -41,6 +41,7 @@ function App() {
 // Navigation is automatic - clicking tabs navigates to:
 // - "Flow Editor" tab -> "/" route
 // - "Flow Failures" tab -> "/failures" route
+// - "AI Assistance" tab -> "/ai-assistance" route
 ```
 
 ## Integration Points
@@ -48,10 +49,11 @@ function App() {
 - **App Component**: Rendered as the top-level navigation component
 - **FlowEditorPage**: Accessible via the "Flow Editor" tab
 - **FlowFailuresPage**: Accessible via the "Flow Failures" tab
+- **AIAssistancePage**: Accessible via the "AI Assistance" tab
 
 ## Configuration Requirements
 - Must be wrapped in a Router component (HashRouter in this application)
-- Requires routing configuration for "/" and "/failures" paths
+- Requires routing configuration for "/", "/failures", and "/ai-assistance" paths
 
 ## Error Handling Approach
 - **Route Detection**: Gracefully handles unknown routes (defaults to editor tab)
@@ -74,7 +76,8 @@ NavBar (Stack horizontal)
 └── Navigation Section
     └── Pivot (Tab Navigation)
         ├── PivotItem ("Flow Editor")
-        └── PivotItem ("Flow Failures")
+        ├── PivotItem ("Flow Failures")
+        └── PivotItem ("AI Assistance")
 ```
 
 ### Styling Classes
@@ -118,6 +121,11 @@ NavBar (Stack horizontal)
 - **Accessibility**: Test keyboard navigation and screen reader support
 
 ## Change History
+- **[2024-01-XX]**: Added AI Assistance tab for AI-powered flow modifications
+  - Renamed "Graph Endpoints" tab to "AI Assistance" tab in Pivot navigation
+  - Updated route detection logic to handle "/ai-assistance" path
+  - Added navigation handler for AI Assistance page
+  - Updated documentation to reflect new AI assistance functionality
 - **[2024-12-19]**: Updated to include tab-based navigation
   - Added Pivot component for tab navigation
   - Integrated with React Router for route management

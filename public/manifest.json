@@ -19,7 +19,9 @@
       "*://*.flow.microsoft.com/",
       "*://*.make.powerautomate.com/",
       "*://*.make.powerapps.com/",
-      "https://login.microsoftonline.com/"
+      "https://login.microsoftonline.com/",
+      "https://api.openai.com/",
+      "https://api.anthropic.com/"
    ],
    "action": {
       "default_title": "Power Automate Tools"

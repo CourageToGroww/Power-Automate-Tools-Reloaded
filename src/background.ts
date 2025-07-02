@@ -161,6 +161,10 @@ chrome.runtime.onMessage.addListener(
           sendResponse();
           refreshInitiator();
           break;
+        case "ai-api-call":
+          debugLog('AI API call requested');
+          handleAIApiCall(action, sendResponse);
+          return true; // Keep message channel open for async response
       }
     } else {
       debugLog('Message from non-app tab, ignoring');
@@ -183,6 +187,55 @@ function showNotification(message: string) {
     title: 'Power Automate Tools',
     message: message
   });
+}
+
+async function handleAIApiCall(action: any, sendResponse: (response: any) => void) {
+  try {
+    debugLog('Making AI API call to:', action.url);
+    debugLog('Request headers:', action.headers);
+    debugLog('Request body preview:', action.body?.substring(0, 200) + '...');
+    
+    const response = await fetch(action.url, {
+      method: action.method,
+      headers: action.headers,
+      body: action.body
+    });
+
+    debugLog('Response status:', response.status);
+    debugLog('Response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      let errorMessage = `API error: ${response.status} ${response.statusText}`;
+      let errorDetails = '';
+      try {
+        const errorData = await response.json();
+        debugError('API error response:', errorData);
+        errorMessage = errorData.error?.message || errorData.message || errorMessage;
+        errorDetails = JSON.stringify(errorData);
+      } catch (e) {
+        // If we can't parse the error, try to get text
+        try {
+          errorDetails = await response.text();
+          debugError('API error text:', errorDetails);
+        } catch (e2) {
+          debugError('Could not parse error response');
+        }
+      }
+      throw new Error(`${errorMessage}${errorDetails ? ` - Details: ${errorDetails}` : ''}`);
+    }
+
+    const data = await response.json();
+    debugLog('API response received successfully');
+    sendResponse({ success: true, data });
+  } catch (error) {
+    debugError('AI API call failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    debugError('Sending error response:', errorMessage);
+    sendResponse({ 
+      success: false, 
+      error: errorMessage
+    });
+  }
 }
 
 function sendTokenChanged() {

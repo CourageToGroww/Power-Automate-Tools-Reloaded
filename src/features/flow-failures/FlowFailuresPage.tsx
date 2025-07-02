@@ -8,12 +8,13 @@ import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
 import { Stack } from '@fluentui/react/lib/Stack';
 import { Text } from '@fluentui/react/lib/Text';
 import { mergeStyles } from '@fluentui/react/lib/Styling';
+import { PrimaryButton } from '@fluentui/react/lib/Button';
 import Editor from '@monaco-editor/react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import { useMemo, useState, useEffect } from 'react';
 import { LoaderModal } from '../../common/components/LoaderModal';
 import { Messages } from '../../common/components/Messages';
-import { FlowFailure } from './types';
+import { FlowFailure, FlowRunAction } from './types';
 import { useFlowFailures } from './useFlowFailures';
 
 const containerClassName = mergeStyles({
@@ -50,6 +51,7 @@ export const FlowFailuresPage: React.FC = () => {
     toggleDebugMode,
     messages,
     onDismissed,
+    addMessage,
   } = useFlowFailures();
 
   // Prepare the JSON content for the editor with failed actions highlighted
@@ -59,6 +61,23 @@ export const FlowFailuresPage: React.FC = () => {
     if (debugMode) {
       // In debug mode, show the raw API response
       return JSON.stringify(selectedRunDetails, null, 2);
+    }
+
+    // Extract failed actions for better visibility
+    const failedActions: { [key: string]: FlowRunAction } = {};
+    const skippedActions: { [key: string]: FlowRunAction } = {};
+    const succeededActions: { [key: string]: FlowRunAction } = {};
+    
+    if (selectedRunDetails.properties.actions) {
+      Object.entries(selectedRunDetails.properties.actions).forEach(([key, action]) => {
+        if (action.status === 'Failed') {
+          failedActions[key] = action;
+        } else if (action.status === 'Skipped') {
+          skippedActions[key] = action;
+        } else if (action.status === 'Succeeded') {
+          succeededActions[key] = action;
+        }
+      });
     }
 
     const runData = {
@@ -71,18 +90,38 @@ export const FlowFailuresPage: React.FC = () => {
         ? `${Math.round((new Date(selectedRunDetails.properties.endTime).getTime() - new Date(selectedRunDetails.properties.startTime).getTime()) / 1000)}s`
         : 'N/A',
       correlation: selectedRunDetails.properties.correlation,
-      trigger: {
-        ...selectedRunDetails.properties.trigger,
-        // Add more trigger details
-        hasInputsLink: !!selectedRunDetails.properties.trigger.inputsLink,
-        hasOutputsLink: !!selectedRunDetails.properties.trigger.outputsLink,
-        inputsSize: selectedRunDetails.properties.trigger.inputsLink?.contentSize || 0,
-        outputsSize: selectedRunDetails.properties.trigger.outputsLink?.contentSize || 0,
+      
+      // Summary section
+      summary: {
+        totalActions: selectedRunDetails.properties.actions ? Object.keys(selectedRunDetails.properties.actions).length : 0,
+        failedActions: Object.keys(failedActions).length,
+        skippedActions: Object.keys(skippedActions).length,
+        succeededActions: Object.keys(succeededActions).length,
+        triggerFailed: selectedRunDetails.properties.trigger?.status === 'Failed',
       },
-      actions: selectedRunDetails.properties.actions || {},
-      actionCount: selectedRunDetails.properties.actions ? Object.keys(selectedRunDetails.properties.actions).length : 0,
-      outputs: selectedRunDetails.properties.outputs || null,
+      
+      // Trigger details
+      trigger: selectedRunDetails.properties.trigger,
+      
+      // Failed actions first for visibility
+      failedActions: Object.keys(failedActions).length > 0 ? failedActions : undefined,
+      
+      // Skipped actions
+      skippedActions: Object.keys(skippedActions).length > 0 ? skippedActions : undefined,
+      
+      // All actions (including succeeded) - useful for debugging flow logic
+      allActions: selectedRunDetails.properties.actions || {},
+      
+      // Outputs if any
+      outputs: selectedRunDetails.properties.outputs || undefined,
     };
+
+    // Remove undefined fields for cleaner JSON
+    Object.keys(runData).forEach(key => {
+      if (runData[key as keyof typeof runData] === undefined) {
+        delete runData[key as keyof typeof runData];
+      }
+    });
 
     return JSON.stringify(runData, null, 2);
   }, [selectedRunDetails, debugMode]);
@@ -308,6 +347,17 @@ export const FlowFailuresPage: React.FC = () => {
     setIsPanelOpen(false);
   };
 
+  const copyJsonToClipboard = () => {
+    if (editorContent) {
+      navigator.clipboard.writeText(editorContent).then(() => {
+        addMessage('Flow run JSON copied to clipboard', MessageBarType.success);
+      }).catch(err => {
+        addMessage('Failed to copy to clipboard', MessageBarType.error);
+        console.error('Copy failed:', err);
+      });
+    }
+  };
+
   return (
     <div className={containerClassName}>
       {isLoading && <LoaderModal />}
@@ -357,14 +407,25 @@ export const FlowFailuresPage: React.FC = () => {
         ) : selectedRunDetails ? (
           <div className={editorContainerClassName}>
             <Stack tokens={{ childrenGap: 10 }} styles={{ root: { padding: '10px 0' } }}>
-              <Text variant="medium">
-                <strong>Failed Actions:</strong> {selectedFailure?.failedActions.length || 0}
-                {selectedFailure?.triggerFailed ? ' (+ Trigger Failed)' : ''}
-              </Text>
+              <Stack horizontal tokens={{ childrenGap: 20 }} verticalAlign="center">
+                <Stack.Item grow>
+                  <Text variant="medium">
+                    <strong>Failed Actions:</strong> {selectedFailure?.failedActions.length || 0}
+                    {selectedFailure?.triggerFailed ? ' (+ Trigger Failed)' : ''}
+                  </Text>
+                </Stack.Item>
+                <Stack.Item>
+                  <PrimaryButton 
+                    text="Copy JSON" 
+                    onClick={copyJsonToClipboard}
+                    iconProps={{ iconName: 'Copy' }}
+                  />
+                </Stack.Item>
+              </Stack>
               <Text variant="small">
                 {debugMode 
                   ? 'Debug Mode: Showing raw API response. Check browser console for detailed logs.'
-                  : 'Failed actions are highlighted in light red with error details on hover.'}
+                  : 'Failed actions are highlighted in light red. JSON includes summary, failed actions grouped separately, and all action details.'}
               </Text>
               {debugMode && (
                 <Text variant="small" style={{ color: '#d13438', fontWeight: 'bold' }}>
@@ -372,7 +433,7 @@ export const FlowFailuresPage: React.FC = () => {
                 </Text>
               )}
             </Stack>
-            <div style={{ height: '600px', border: '1px solid #ccc', overflow: 'hidden' }}>
+            <div style={{ height: '600px', border: '1px solid #ccc' }}>
               <Editor
                 value={editorContent}
                 language="json"
@@ -394,6 +455,9 @@ export const FlowFailuresPage: React.FC = () => {
                     horizontal: 'visible',
                     verticalScrollbarSize: 17,
                     horizontalScrollbarSize: 17,
+                    useShadows: false,
+                    verticalHasArrows: true,
+                    horizontalHasArrows: true,
                   },
                   mouseWheelScrollSensitivity: 1,
                   fastScrollSensitivity: 5,
@@ -401,25 +465,24 @@ export const FlowFailuresPage: React.FC = () => {
                   selectionHighlight: false,
                   occurrencesHighlight: false,
                   renderLineHighlight: 'none',
+                  contextmenu: false,
+                  links: false,
+                  find: {
+                    addExtraSpaceOnTop: false,
+                    autoFindInSelection: 'never',
+                    seedSearchStringFromSelection: 'never',
+                  },
+                  quickSuggestions: false,
+                  parameterHints: { enabled: false },
+                  suggestOnTriggerCharacters: false,
+                  acceptSuggestionOnEnter: 'off',
+                  tabCompletion: 'off',
+                  wordBasedSuggestions: false,
+                  hover: { enabled: true },
+                  dragAndDrop: false,
                 }}
               />
             </div>
-            {/* Emergency fallback if Monaco doesn't work */}
-            {editorContent && (
-              <details style={{ marginTop: '10px' }}>
-                <summary>Show JSON (fallback view)</summary>
-                <pre style={{ 
-                  backgroundColor: '#f5f5f5', 
-                  padding: '10px', 
-                  overflow: 'auto',
-                  maxHeight: '400px',
-                  fontSize: '12px',
-                  fontFamily: 'monospace'
-                }}>
-                  {editorContent}
-                </pre>
-              </details>
-            )}
           </div>
         ) : (
           <Text>No run details available.</Text>
