@@ -5,8 +5,11 @@ import { Button } from '../../../components/ui/button';
 import { ScrollArea } from '../../../components/ui/scroll-area';
 import { FlowFailure, FlowRunDetails, FlowRunAction } from '../types';
 import { ActionCard } from './ActionCard';
-import { ArrowLeft, Copy, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Copy, Eye, EyeOff, XCircle, Save } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { ThemeToggle } from '../../../components/ThemeToggle';
+import Editor from '@monaco-editor/react';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 interface FlowRunEditorProps {
   run: FlowFailure;
@@ -19,6 +22,7 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
   runDetails,
   onBack,
 }) => {
+  const { theme } = useTheme();
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
@@ -87,6 +91,7 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button
               variant="outline"
               size="sm"
@@ -120,7 +125,10 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
       {/* Content */}
       <div className="flex-1 flex">
         {/* Flow Visualization */}
-        <div className="flex-1 overflow-hidden">
+        <div className={cn(
+          "overflow-hidden",
+          selectedAction && !showJson ? "w-1/2" : "flex-1"
+        )}>
           {showJson ? (
             <ScrollArea className="h-full">
               <div className="p-6">
@@ -128,10 +136,23 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
                   <CardHeader>
                     <CardTitle>Full Run JSON</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <pre className="text-xs overflow-x-auto">
-                      <code>{JSON.stringify(runDetails, null, 2)}</code>
-                    </pre>
+                  <CardContent className="p-4">
+                    <div style={{ height: '600px' }}>
+                      <Editor
+                        height="100%"
+                        language="json"
+                        theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                        value={JSON.stringify(runDetails, null, 2)}
+                        options={{
+                          readOnly: true,
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          wordWrap: 'on',
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                        }}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -163,7 +184,7 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
 
         {/* Action Details Panel */}
         {selectedAction && !showJson && (
-          <div className="w-96 border-l bg-card">
+          <div className="flex-1 border-l bg-card">
             <ScrollArea className="h-full">
               <div className="p-6">
                 <ActionDetails
@@ -185,11 +206,33 @@ interface ActionDetailsProps {
 }
 
 const ActionDetails: React.FC<ActionDetailsProps> = ({ action, onClose }) => {
+  const { theme } = useTheme();
   const [editingJson, setEditingJson] = useState(false);
   const [jsonValue, setJsonValue] = useState(JSON.stringify(action, null, 2));
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const handleJsonChange = (value: string | undefined) => {
+    if (value) {
+      setJsonValue(value);
+      setHasChanges(value !== JSON.stringify(action, null, 2));
+    }
+  };
+
+  const handleSave = () => {
+    // Here you would implement the actual save logic
+    console.log('Saving JSON:', jsonValue);
+    setHasChanges(false);
+    setEditingJson(false);
+  };
+
+  const handleCancel = () => {
+    setJsonValue(JSON.stringify(action, null, 2));
+    setHasChanges(false);
+    setEditingJson(false);
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 h-full flex flex-col">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{action.name}</h2>
         <Button variant="ghost" size="icon" onClick={onClose}>
@@ -197,7 +240,7 @@ const ActionDetails: React.FC<ActionDetailsProps> = ({ action, onClose }) => {
         </Button>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-4 flex-1 flex flex-col min-h-0">
         <div>
           <h3 className="text-sm font-medium mb-2">Status</h3>
           {getStatusBadge(action.status)}
@@ -243,30 +286,60 @@ const ActionDetails: React.FC<ActionDetailsProps> = ({ action, onClose }) => {
           </div>
         )}
 
-        <div>
+        <div className="flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium">Action JSON</h3>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditingJson(!editingJson)}
-            >
-              {editingJson ? 'View' : 'Edit'}
-            </Button>
-          </div>
-          <Card>
-            <CardContent className="pt-4">
-              {editingJson ? (
-                <textarea
-                  className="w-full h-96 p-2 font-mono text-xs bg-background border rounded"
-                  value={jsonValue}
-                  onChange={(e) => setJsonValue(e.target.value)}
-                />
-              ) : (
-                <pre className="text-xs overflow-x-auto">
-                  <code>{jsonValue}</code>
-                </pre>
+            <div className="flex items-center gap-2">
+              {editingJson && hasChanges && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancel}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleSave}
+                  >
+                    <Save className="w-3 h-3 mr-1" />
+                    Save
+                  </Button>
+                </>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditingJson(!editingJson)}
+              >
+                {editingJson ? 'View' : 'Edit'}
+              </Button>
+            </div>
+          </div>
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardContent className="pt-4 pb-4 flex-1 flex flex-col min-h-0">
+              <div className="h-full min-h-0">
+                <Editor
+                  height="100%"
+                  language="json"
+                  theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                  value={jsonValue}
+                  onChange={handleJsonChange}
+                  options={{
+                    readOnly: !editingJson,
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    wordWrap: 'on',
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    tabSize: 2,
+                    formatOnPaste: true,
+                    formatOnType: true,
+                  }}
+                />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -289,6 +362,3 @@ const getStatusBadge = (status: string) => {
       return <Badge variant="outline">{status}</Badge>;
   }
 };
-
-// Add missing import
-import { XCircle } from 'lucide-react';
