@@ -146,6 +146,21 @@ export const usePreviousRuns = () => {
         fullRunDetails: runDetails, // Log the full response for debugging
       });
 
+      // Fetch the flow definition to understand action dependencies
+      try {
+        const flowUrl = `providers/Microsoft.ProcessSimple/environments/${envId}/flows/${flowId}`;
+        debugLog('Fetching flow definition from:', flowUrl);
+        const flowResponse = await api.get(flowUrl);
+        
+        if (flowResponse.properties?.definition) {
+          runDetails.properties.definition = flowResponse.properties.definition;
+          debugLog('Successfully fetched flow definition with actions:', 
+            Object.keys(flowResponse.properties.definition.actions || {}).length);
+        }
+      } catch (flowError) {
+        debugLog('Failed to fetch flow definition:', flowError);
+      }
+
       // If no actions but run failed, try to get action details from a different endpoint
       if ((!runDetails.properties.actions || Object.keys(runDetails.properties.actions).length === 0) && 
           runDetails.properties.status === 'Failed') {
