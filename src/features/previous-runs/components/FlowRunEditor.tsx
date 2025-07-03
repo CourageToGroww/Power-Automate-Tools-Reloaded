@@ -5,7 +5,7 @@ import { Button } from '../../../components/ui/button';
 import { ScrollArea } from '../../../components/ui/scroll-area';
 import { FlowFailure, FlowRunDetails, FlowRunAction } from '../types';
 import { ActionCard } from './ActionCard';
-import { ArrowLeft, Copy, Eye, EyeOff, XCircle, Save } from 'lucide-react';
+import { ArrowLeft, Copy, Eye, EyeOff, XCircle, Save, ArrowDown } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { ThemeToggle } from '../../../components/ThemeToggle';
 import Editor from '@monaco-editor/react';
@@ -169,20 +169,29 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
               <div className="p-6">
                 <div className="grid grid-cols-3 gap-4">
                   {actionTree.map((action, index) => (
-                    <ActionCard
-                      key={action.id}
-                      action={action}
-                      isSelected={selectedAction === action.id}
-                      onClick={() => {
-                        setSelectedAction(action.id);
-                        // Set the JSON immediately from the action data we already have
-                        const selectedActionData = actionTree.find(a => a.id === action.id);
-                        if (selectedActionData) {
-                          console.log('Selected action data:', selectedActionData);
-                        }
-                      }}
-                      isTrigger={action.id === 'trigger'}
-                    />
+                    <React.Fragment key={action.id}>
+                      <ActionCard
+                        action={action}
+                        isSelected={selectedAction === action.id}
+                        onClick={() => {
+                          setSelectedAction(action.id);
+                          // Set the JSON immediately from the action data we already have
+                          const selectedActionData = actionTree.find(a => a.id === action.id);
+                          if (selectedActionData) {
+                            console.log('Selected action data:', selectedActionData);
+                          }
+                        }}
+                        isTrigger={action.id === 'trigger'}
+                      />
+                      {/* Add arrow after each card except the last one */}
+                      {index < actionTree.length - 1 && (
+                        <div className="col-span-3 flex justify-center -my-2">
+                          <div className="flex flex-col items-center">
+                            <ArrowDown className="w-6 h-6 text-gray-400 dark:text-gray-600" />
+                          </div>
+                        </div>
+                      )}
+                    </React.Fragment>
                   ))}
                 </div>
               </div>
