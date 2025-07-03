@@ -48,6 +48,14 @@ export const FlowVisualization: React.FC<FlowVisualizationProps> = ({
     const trigger = runDetails.properties.trigger;
     const flowDefinition = runDetails.properties.definition;
     
+    console.log('Building flow tree:', {
+      hasActions: !!actions,
+      actionCount: Object.keys(actions).length,
+      hasTrigger: !!trigger,
+      hasDefinition: !!flowDefinition,
+      definitionActions: flowDefinition?.actions ? Object.keys(flowDefinition.actions).length : 0
+    });
+    
     // Create trigger node
     const triggerNode: FlowNode = {
       id: 'trigger',
@@ -104,6 +112,15 @@ export const FlowVisualization: React.FC<FlowVisualizationProps> = ({
           }
         }
       });
+    } else {
+      // Fallback: If no flow definition, arrange all actions as children of trigger
+      console.log('No flow definition found, using linear arrangement');
+      Object.values(nodeMap).forEach(node => {
+        if (node.id !== 'trigger' && !triggerNode.children.includes(node)) {
+          triggerNode.children.push(node);
+          node.parent = triggerNode;
+        }
+      });
     }
 
     // Calculate positions using a layout algorithm
@@ -153,6 +170,14 @@ export const FlowVisualization: React.FC<FlowVisualizationProps> = ({
   };
 
   const rootNode = buildFlowTree();
+  
+  if (!rootNode || !runDetails.properties.trigger) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-muted-foreground">No flow data available</p>
+      </div>
+    );
+  }
 
   // Zoom controls
   const handleZoomIn = () => {
@@ -371,7 +396,7 @@ export const FlowVisualization: React.FC<FlowVisualizationProps> = ({
       >
         <div
           ref={canvasRef}
-          className="relative"
+          className="relative w-full h-full"
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
             transformOrigin: '0 0',
@@ -381,14 +406,18 @@ export const FlowVisualization: React.FC<FlowVisualizationProps> = ({
           <svg
             width="10000"
             height="10000"
+            viewBox="-5000 -5000 10000 10000"
             style={{
               position: 'absolute',
-              left: '-5000px',
-              top: '-5000px',
+              overflow: 'visible',
             }}
           >
-            {renderConnections(rootNode)}
-            {renderActionCard(rootNode)}
+            <g>
+              {renderConnections(rootNode)}
+            </g>
+            <g>
+              {renderActionCard(rootNode)}
+            </g>
           </svg>
         </div>
       </div>
