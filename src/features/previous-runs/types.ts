@@ -98,6 +98,11 @@ export interface FlowRunDetails {
     trigger: FlowRunAction;
     actions?: { [key: string]: FlowRunAction };
     outputs?: any;
+    definition?: {
+      actions?: { [key: string]: any };
+      triggers?: { [key: string]: any };
+      [key: string]: any;
+    };
   };
 }
 
