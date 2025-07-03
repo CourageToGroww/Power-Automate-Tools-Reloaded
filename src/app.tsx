@@ -16,6 +16,7 @@ import { FlowEditorPage } from './features/flow-editor/FlowEditorPage';
 import { PreviousRunsPage } from './features/previous-runs/PreviousRunsPage';
 import { AIAssistancePage } from './features/ai-assistance/AIAssistancePage';
 import { useEffect, useState } from 'react';
+import { ThemeProvider } from './contexts/ThemeContext';
 import './styles/globals.css';
 
 initMonaco();
@@ -30,7 +31,11 @@ mergeStyles({
   },
 });
 
-createRoot(document.getElementById('app')!).render(<App />);
+createRoot(document.getElementById('app')!).render(
+  <ThemeProvider>
+    <App />
+  </ThemeProvider>
+);
 
 function App() {
   const apiProviderRoot = ApiProviderContextRoot();

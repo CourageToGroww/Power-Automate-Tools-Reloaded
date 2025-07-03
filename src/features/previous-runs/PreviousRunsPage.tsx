@@ -8,6 +8,7 @@ import { FlowRunEditor } from './components/FlowRunEditor';
 import { ChevronRight, Clock, AlertCircle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { FlowFailure } from './types';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 export const PreviousRunsPage: React.FC = () => {
   const [selectedRun, setSelectedRun] = useState<FlowFailure | null>(null);
@@ -84,10 +85,13 @@ export const PreviousRunsPage: React.FC = () => {
               View and analyze your flow execution history
             </p>
           </div>
-          <Button onClick={refreshRuns} disabled={isLoading}>
-            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button onClick={refreshRuns} disabled={isLoading}>
+              <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </div>
 
