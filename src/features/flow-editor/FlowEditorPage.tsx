@@ -96,36 +96,61 @@ export const FlowEditorPage: React.FC = () => {
   useEffect(() => {
     const style = document.createElement('style');
     style.id = 'flow-editor-dark-mode';
-    style.textContent = `
-      .dark .ms-CommandBar {
-        background-color: rgb(17 24 39) !important;
-        border-bottom: 1px solid rgb(31 41 55) !important;
-      }
-      .dark .ms-CommandBar-primaryCommand,
-      .dark .ms-CommandBar-secondaryCommand {
-        background-color: rgb(17 24 39) !important;
-      }
-      .dark .ms-CommandBarItem-link,
-      .dark .ms-CommandBarItem-text {
-        color: rgb(229 231 235) !important;
-      }
-      .dark .ms-CommandBarItem-link:hover {
-        background-color: rgb(31 41 55) !important;
-        color: rgb(229 231 235) !important;
-      }
-      .dark .ms-CommandBarItem-icon {
-        color: rgb(156 163 175) !important;
-      }
-      .dark .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon {
-        color: rgb(229 231 235) !important;
-      }
-      .dark .ms-CommandBarItem-link.is-disabled {
-        color: rgb(75 85 99) !important;
-      }
-      .dark .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-icon {
-        color: rgb(75 85 99) !important;
-      }
-    `;
+    
+    if (theme === 'dark') {
+      style.textContent = `
+        .ms-CommandBar {
+          background-color: rgb(17 24 39) !important;
+          border-bottom: 1px solid rgb(31 41 55) !important;
+        }
+        .ms-CommandBar-primaryCommand,
+        .ms-CommandBar-secondaryCommand {
+          background-color: rgb(17 24 39) !important;
+        }
+        .ms-CommandBarItem-link,
+        .ms-CommandBarItem-text {
+          color: rgb(229 231 235) !important;
+        }
+        .ms-CommandBarItem-link:hover {
+          background-color: rgb(31 41 55) !important;
+          color: rgb(229 231 235) !important;
+        }
+        .ms-CommandBarItem-icon {
+          color: rgb(156 163 175) !important;
+        }
+        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon {
+          color: rgb(229 231 235) !important;
+        }
+        .ms-CommandBarItem-link.is-disabled {
+          color: rgb(75 85 99) !important;
+        }
+        .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-icon {
+          color: rgb(75 85 99) !important;
+        }
+      `;
+    } else {
+      // Light mode - ensure proper colors
+      style.textContent = `
+        .ms-CommandBar {
+          background-color: #f3f2f1 !important;
+          border-bottom: 1px solid #e1e1e1 !important;
+        }
+        .ms-CommandBarItem-link,
+        .ms-CommandBarItem-text {
+          color: #323130 !important;
+        }
+        .ms-CommandBarItem-link:hover {
+          background-color: #edebe9 !important;
+          color: #201f1e !important;
+        }
+        .ms-CommandBarItem-icon {
+          color: #605e5c !important;
+        }
+        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon {
+          color: #323130 !important;
+        }
+      `;
+    }
     
     // Remove existing style if it exists
     const existingStyle = document.getElementById('flow-editor-dark-mode');
