@@ -83,11 +83,6 @@ function findMatchingBrackets(text: string, position: number): { start: number; 
     }
   }
   
-  // Also check the character after cursor
-  if (position + 1 < text.length) {
-    return findMatchingBrackets(text, position + 1);
-  }
-  
   return null;
 }
 
@@ -96,7 +91,6 @@ export const FlowEditorPage: React.FC = () => {
   const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor>(
     null as any
   );
-  const [blockDecorations, setBlockDecorations] = useState<string[]>([]);
   const {
     name,
     environment,
@@ -189,6 +183,8 @@ export const FlowEditorPage: React.FC = () => {
               setEditor(editor);
               
               // Add block highlighting on cursor position change
+              let currentDecorations: string[] = [];
+              
               editor.onDidChangeCursorPosition((e) => {
                 const model = editor.getModel();
                 if (!model) return;
@@ -201,43 +197,40 @@ export const FlowEditorPage: React.FC = () => {
                 const charAtCursor = text[offset - 1];
                 const charAfterCursor = text[offset];
                 
-                if (charAtCursor === '{' || charAtCursor === '}' || charAfterCursor === '{' || charAfterCursor === '}') {
-                  // Find the matching bracket and highlight the block
-                  const brackets = findMatchingBrackets(text, offset - 1);
-                  if (brackets) {
-                    const startPos = model.getPositionAt(brackets.start);
-                    const endPos = model.getPositionAt(brackets.end + 1);
-                    
-                    // Clear previous decorations
-                    const oldDecorations = blockDecorations;
-                    
-                    // Apply new decoration
-                    const newDecorations = editor.deltaDecorations(oldDecorations, [
-                      {
-                        range: new monaco.Range(
-                          startPos.lineNumber,
-                          startPos.column,
-                          endPos.lineNumber,
-                          endPos.column
-                        ),
-                        options: {
-                          className: 'block-highlight',
-                          isWholeLine: false,
-                          linesDecorationsClassName: 'block-highlight-margin'
-                        }
+                let shouldHighlight = false;
+                let brackets = null;
+                
+                if (charAtCursor === '{' || charAtCursor === '}') {
+                  brackets = findMatchingBrackets(text, offset - 1);
+                  shouldHighlight = !!brackets;
+                } else if (charAfterCursor === '{' || charAfterCursor === '}') {
+                  brackets = findMatchingBrackets(text, offset);
+                  shouldHighlight = !!brackets;
+                }
+                
+                if (shouldHighlight && brackets) {
+                  const startPos = model.getPositionAt(brackets.start);
+                  const endPos = model.getPositionAt(brackets.end + 1);
+                  
+                  // Apply new decoration
+                  currentDecorations = editor.deltaDecorations(currentDecorations, [
+                    {
+                      range: new monaco.Range(
+                        startPos.lineNumber,
+                        startPos.column,
+                        endPos.lineNumber,
+                        endPos.column
+                      ),
+                      options: {
+                        className: 'block-highlight',
+                        isWholeLine: false,
+                        linesDecorationsClassName: 'block-highlight-margin'
                       }
-                    ]);
-                    
-                    setBlockDecorations(newDecorations);
-                  } else {
-                    // Clear decorations if no matching brackets
-                    editor.deltaDecorations(blockDecorations, []);
-                    setBlockDecorations([]);
-                  }
+                    }
+                  ]);
                 } else {
-                  // Clear decorations if not at a bracket
-                  editor.deltaDecorations(blockDecorations, []);
-                  setBlockDecorations([]);
+                  // Clear all decorations
+                  currentDecorations = editor.deltaDecorations(currentDecorations, []);
                 }
               });
               
@@ -272,7 +265,12 @@ export const FlowEditorPage: React.FC = () => {
                 
                 const text = model.getValue();
                 const offset = model.getOffsetAt(position);
-                const brackets = findMatchingBrackets(text, offset - 1);
+                
+                // Check both positions like in the highlight logic
+                let brackets = findMatchingBrackets(text, offset - 1);
+                if (!brackets) {
+                  brackets = findMatchingBrackets(text, offset);
+                }
                 
                 if (brackets) {
                   const startPos = model.getPositionAt(brackets.start);
