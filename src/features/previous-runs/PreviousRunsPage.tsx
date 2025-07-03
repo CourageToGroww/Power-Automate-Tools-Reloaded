@@ -14,6 +14,7 @@ export const PreviousRunsPage: React.FC = () => {
   const [selectedRun, setSelectedRun] = useState<FlowFailure | null>(null);
   const {
     isLoading,
+    isLoadingDetails,
     failures: runs,
     selectedRunDetails,
     selectFailure: selectRun,
@@ -62,16 +63,29 @@ export const PreviousRunsPage: React.FC = () => {
     return date.toLocaleString();
   };
 
-  if (selectedRun && selectedRunDetails) {
-    return (
-      <FlowRunEditor
-        run={selectedRun}
-        runDetails={selectedRunDetails}
-        onBack={() => {
-          setSelectedRun(null);
-        }}
-      />
-    );
+  if (selectedRun) {
+    if (isLoadingDetails) {
+      return (
+        <div className="h-full flex items-center justify-center bg-background">
+          <div className="text-center">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4" />
+            <p className="text-lg">Loading run details...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (selectedRunDetails) {
+      return (
+        <FlowRunEditor
+          run={selectedRun}
+          runDetails={selectedRunDetails}
+          onBack={() => {
+            setSelectedRun(null);
+          }}
+        />
+      );
+    }
   }
 
   return (

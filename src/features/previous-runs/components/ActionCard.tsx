@@ -70,15 +70,15 @@ export const ActionCard: React.FC<ActionCardProps> = ({
   const getStatusColor = () => {
     switch (action.status) {
       case 'Succeeded':
-        return 'border-green-200 bg-green-50 hover:border-green-300';
+        return 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 hover:border-green-300 dark:hover:border-green-700';
       case 'Failed':
-        return 'border-red-200 bg-red-50 hover:border-red-300';
+        return 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 hover:border-red-300 dark:hover:border-red-700';
       case 'Skipped':
-        return 'border-gray-200 bg-gray-50 hover:border-gray-300';
+        return 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600';
       case 'Running':
-        return 'border-yellow-200 bg-yellow-50 hover:border-yellow-300';
+        return 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950 hover:border-yellow-300 dark:hover:border-yellow-700';
       default:
-        return 'border-gray-200 bg-gray-50 hover:border-gray-300';
+        return 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600';
     }
   };
 
