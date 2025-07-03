@@ -108,24 +108,39 @@ export const FlowEditorPage: React.FC = () => {
           background-color: rgb(17 24 39) !important;
         }
         .ms-CommandBarItem-link,
-        .ms-CommandBarItem-text {
+        .ms-CommandBarItem-text,
+        .ms-CommandBarItem-link .ms-CommandBarItem-text,
+        .ms-Button-label,
+        .ms-CommandBar .ms-Button-label {
           color: rgb(229 231 235) !important;
         }
-        .ms-CommandBarItem-link:hover {
+        .ms-CommandBarItem-link:hover,
+        .ms-CommandBarItem-link:hover .ms-CommandBarItem-text,
+        .ms-CommandBarItem-link:hover .ms-Button-label {
           background-color: rgb(31 41 55) !important;
           color: rgb(229 231 235) !important;
         }
-        .ms-CommandBarItem-icon {
+        .ms-CommandBarItem-icon,
+        .ms-Icon,
+        .ms-CommandBarItem-link .ms-Icon {
           color: rgb(156 163 175) !important;
         }
-        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon {
+        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon,
+        .ms-CommandBarItem-link:hover .ms-Icon {
           color: rgb(229 231 235) !important;
         }
-        .ms-CommandBarItem-link.is-disabled {
+        .ms-CommandBarItem-link.is-disabled,
+        .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-text,
+        .ms-CommandBarItem-link.is-disabled .ms-Button-label {
           color: rgb(75 85 99) !important;
         }
-        .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-icon {
+        .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-icon,
+        .ms-CommandBarItem-link.is-disabled .ms-Icon {
           color: rgb(75 85 99) !important;
+        }
+        /* Override any inline styles */
+        .ms-CommandBar * {
+          color: inherit !important;
         }
       `;
     } else {
@@ -136,17 +151,25 @@ export const FlowEditorPage: React.FC = () => {
           border-bottom: 1px solid #e1e1e1 !important;
         }
         .ms-CommandBarItem-link,
-        .ms-CommandBarItem-text {
+        .ms-CommandBarItem-text,
+        .ms-CommandBarItem-link .ms-CommandBarItem-text,
+        .ms-Button-label,
+        .ms-CommandBar .ms-Button-label {
           color: #323130 !important;
         }
-        .ms-CommandBarItem-link:hover {
+        .ms-CommandBarItem-link:hover,
+        .ms-CommandBarItem-link:hover .ms-CommandBarItem-text,
+        .ms-CommandBarItem-link:hover .ms-Button-label {
           background-color: #edebe9 !important;
           color: #201f1e !important;
         }
-        .ms-CommandBarItem-icon {
+        .ms-CommandBarItem-icon,
+        .ms-Icon,
+        .ms-CommandBarItem-link .ms-Icon {
           color: #605e5c !important;
         }
-        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon {
+        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon,
+        .ms-CommandBarItem-link:hover .ms-Icon {
           color: #323130 !important;
         }
       `;
