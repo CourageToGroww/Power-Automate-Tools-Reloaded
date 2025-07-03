@@ -138,9 +138,19 @@ export const FlowEditorPage: React.FC = () => {
         .ms-CommandBarItem-link.is-disabled .ms-Icon {
           color: rgb(75 85 99) !important;
         }
-        /* Override any inline styles */
-        .ms-CommandBar * {
-          color: inherit !important;
+        /* Force all text elements to use the right color */
+        .ms-CommandBar,
+        .ms-CommandBar *,
+        .ms-CommandBar button,
+        .ms-CommandBar button span,
+        .ms-CommandBar .ms-Button,
+        .ms-CommandBar .ms-Button-flexContainer,
+        .ms-CommandBar .ms-Button-textContainer {
+          color: rgb(229 231 235) !important;
+        }
+        .ms-CommandBar button:hover,
+        .ms-CommandBar button:hover * {
+          color: rgb(229 231 235) !important;
         }
       `;
     } else {
