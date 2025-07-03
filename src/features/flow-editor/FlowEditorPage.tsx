@@ -5,7 +5,7 @@ import {
 import { mergeStyles } from '@fluentui/react/lib/Styling';
 import Editor from '@monaco-editor/react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { LoaderModal } from '../../common/components/LoaderModal';
 import { Messages } from '../../common/components/Messages';
 import { FlowValidationResult } from './FlowValidationResult';
@@ -91,6 +91,58 @@ export const FlowEditorPage: React.FC = () => {
   const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor>(
     null as any
   );
+  
+  // Apply dark mode styles to command bar
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.id = 'flow-editor-dark-mode';
+    style.textContent = `
+      .dark .ms-CommandBar {
+        background-color: rgb(17 24 39) !important;
+        border-bottom: 1px solid rgb(31 41 55) !important;
+      }
+      .dark .ms-CommandBar-primaryCommand,
+      .dark .ms-CommandBar-secondaryCommand {
+        background-color: rgb(17 24 39) !important;
+      }
+      .dark .ms-CommandBarItem-link,
+      .dark .ms-CommandBarItem-text {
+        color: rgb(229 231 235) !important;
+      }
+      .dark .ms-CommandBarItem-link:hover {
+        background-color: rgb(31 41 55) !important;
+        color: rgb(229 231 235) !important;
+      }
+      .dark .ms-CommandBarItem-icon {
+        color: rgb(156 163 175) !important;
+      }
+      .dark .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon {
+        color: rgb(229 231 235) !important;
+      }
+      .dark .ms-CommandBarItem-link.is-disabled {
+        color: rgb(75 85 99) !important;
+      }
+      .dark .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-icon {
+        color: rgb(75 85 99) !important;
+      }
+    `;
+    
+    // Remove existing style if it exists
+    const existingStyle = document.getElementById('flow-editor-dark-mode');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    document.head.appendChild(style);
+    
+    return () => {
+      const styleToRemove = document.getElementById('flow-editor-dark-mode');
+      if (styleToRemove) {
+        styleToRemove.remove();
+      }
+    };
+  }, [theme]);
+  
   const {
     name,
     environment,
