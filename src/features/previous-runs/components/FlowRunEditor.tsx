@@ -54,6 +54,13 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
     const actions = runDetails.properties.actions || {};
     const trigger = runDetails.properties.trigger;
     
+    console.log('Building action tree:', {
+      hasActions: !!runDetails.properties.actions,
+      actionCount: Object.keys(actions).length,
+      trigger: trigger,
+      actions: actions
+    });
+    
     // For now, we'll display actions in a linear flow
     // In a real implementation, you'd parse the flow definition to understand the tree structure
     const actionList: (FlowRunAction & { id: string })[] = [
