@@ -167,21 +167,22 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
           ) : (
             <ScrollArea className="h-full">
               <div className="p-6">
-                <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
                   {actionTree.map((action, index) => (
-                    <div key={action.id}>
-                      <ActionCard
-                        action={action}
-                        isSelected={selectedAction === action.id}
-                        onClick={() => setSelectedAction(action.id)}
-                        isTrigger={action.id === 'trigger'}
-                      />
-                      {index < actionTree.length - 1 && (
-                        <div className="flex justify-center my-2">
-                          <div className="w-0.5 h-8 bg-border" />
-                        </div>
-                      )}
-                    </div>
+                    <ActionCard
+                      key={action.id}
+                      action={action}
+                      isSelected={selectedAction === action.id}
+                      onClick={() => {
+                        setSelectedAction(action.id);
+                        // Set the JSON immediately from the action data we already have
+                        const selectedActionData = actionTree.find(a => a.id === action.id);
+                        if (selectedActionData) {
+                          console.log('Selected action data:', selectedActionData);
+                        }
+                      }}
+                      isTrigger={action.id === 'trigger'}
+                    />
                   ))}
                 </div>
               </div>
@@ -194,10 +195,15 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
           <div className="flex-1 border-l bg-card">
             <ScrollArea className="h-full">
               <div className="p-6">
-                <ActionDetails
-                  action={actionTree.find(a => a.id === selectedAction)!}
-                  onClose={() => setSelectedAction(null)}
-                />
+                {(() => {
+                  const action = actionTree.find(a => a.id === selectedAction);
+                  return action ? (
+                    <ActionDetails
+                      action={action}
+                      onClose={() => setSelectedAction(null)}
+                    />
+                  ) : null;
+                })()}
               </div>
             </ScrollArea>
           </div>

@@ -68,15 +68,20 @@ export const ActionCard: React.FC<ActionCardProps> = ({
   };
 
   const getStatusColor = () => {
+    // Special case for trigger - always green when succeeded
+    if (isTrigger && action.status === 'Succeeded') {
+      return 'border-green-500 dark:border-green-600 bg-green-100 dark:bg-green-950 hover:border-green-600 dark:hover:border-green-500';
+    }
+    
     switch (action.status) {
       case 'Succeeded':
-        return 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 hover:border-green-300 dark:hover:border-green-700';
+        return 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600';
       case 'Failed':
-        return 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 hover:border-red-300 dark:hover:border-red-700';
+        return 'border-red-500 dark:border-red-600 bg-red-100 dark:bg-red-950 hover:border-red-600 dark:hover:border-red-500';
       case 'Skipped':
         return 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600';
       case 'Running':
-        return 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950 hover:border-yellow-300 dark:hover:border-yellow-700';
+        return 'border-yellow-500 dark:border-yellow-600 bg-yellow-100 dark:bg-yellow-950 hover:border-yellow-600 dark:hover:border-yellow-500';
       default:
         return 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600';
     }
@@ -97,7 +102,10 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           <div className="flex items-start space-x-3">
             <div className={cn(
               'p-2 rounded-lg',
-              isTrigger ? 'bg-primary/10 text-primary' : 'bg-secondary/50'
+              isTrigger && action.status === 'Succeeded' ? 'bg-green-500/20 text-green-600 dark:text-green-400' :
+              action.status === 'Failed' ? 'bg-red-500/20 text-red-600 dark:text-red-400' :
+              action.status === 'Running' ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400' :
+              'bg-secondary/50'
             )}>
               {getActionIcon()}
             </div>
