@@ -14,7 +14,6 @@ import {
 } from './common/providers/ApiProvider';
 import { FlowEditorPage } from './features/flow-editor/FlowEditorPage';
 import { PreviousRunsPage } from './features/previous-runs/PreviousRunsPage';
-import { AIAssistancePage } from './features/ai-assistance/AIAssistancePage';
 import { useEffect, useState } from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import './styles/globals.css';
@@ -121,7 +120,6 @@ function App() {
               <Route path="/">
                 <Route index element={<FlowEditorPage />} />
                 <Route path="failures" element={<PreviousRunsPage />} />
-                <Route path="ai-assistance" element={<AIAssistancePage />} />
               </Route>
             </Routes>
           ) : !authError ? (
