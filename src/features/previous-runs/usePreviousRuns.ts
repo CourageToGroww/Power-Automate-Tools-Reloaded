@@ -161,10 +161,9 @@ export const usePreviousRuns = () => {
         debugLog('Failed to fetch flow definition:', flowError);
       }
 
-      // If no actions but run failed, try to get action details from a different endpoint
-      if ((!runDetails.properties.actions || Object.keys(runDetails.properties.actions).length === 0) && 
-          runDetails.properties.status === 'Failed') {
-        debugLog('No actions found but run failed - trying alternative endpoints...');
+      // Always try to get action details from the actions endpoint if not already present
+      if (!runDetails.properties.actions || Object.keys(runDetails.properties.actions).length === 0) {
+        debugLog('No actions found in initial response - fetching from actions endpoint...');
         
         try {
           // Try to get run actions from the actions endpoint
@@ -174,11 +173,26 @@ export const usePreviousRuns = () => {
           debugLog('Actions response:', actionsResponse);
           
           if (actionsResponse.value && Array.isArray(actionsResponse.value)) {
-            // Convert actions array to object format
+            // Convert actions array to object format, flattening properties
             const actionsObject: { [key: string]: FlowRunAction } = {};
             actionsResponse.value.forEach((action: any) => {
               if (action.name) {
-                actionsObject[action.name] = action;
+                // Flatten properties to top level if they exist
+                const props = action.properties || {};
+                actionsObject[action.name] = {
+                  name: action.name,
+                  type: action.type || props.type,
+                  status: props.status || action.status,
+                  startTime: props.startTime || action.startTime,
+                  endTime: props.endTime || action.endTime,
+                  inputs: props.inputs || action.inputs,
+                  outputs: props.outputs || action.outputs,
+                  inputsLink: props.inputsLink || action.inputsLink,
+                  outputsLink: props.outputsLink || action.outputsLink,
+                  error: props.error || action.error,
+                  code: props.code || action.code,
+                  trackedProperties: props.trackedProperties || action.trackedProperties,
+                };
               }
             });
             runDetails.properties.actions = actionsObject;

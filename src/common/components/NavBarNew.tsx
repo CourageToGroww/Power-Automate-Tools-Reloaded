@@ -7,13 +7,11 @@ export const NavBar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const currentTab = location.pathname === '/failures' ? 'failures' : 
-                    location.pathname === '/ai-assistance' ? 'ai-assistance' : 'editor';
+  const currentTab = location.pathname === '/failures' ? 'failures' : 'editor';
 
   const tabs = [
     { id: 'editor', label: 'Flow Editor', path: '/' },
     { id: 'failures', label: 'Previous Runs', path: '/failures' },
-    { id: 'ai-assistance', label: 'AI Assistance', path: '/ai-assistance' },
   ];
 
   return (
