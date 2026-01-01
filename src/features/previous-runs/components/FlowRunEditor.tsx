@@ -4,9 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { ScrollArea } from '../../../components/ui/scroll-area';
-import { FlowFailure, FlowRunDetails, FlowRunAction } from '../types';
-import { FlowVisualization } from './FlowVisualization';
-import { ArrowLeft, Copy, Eye, XCircle, Save, FileJson, CheckCircle, AlertTriangle, Download, RefreshCw, Maximize2, Minimize2, ChevronDown, ChevronRight } from 'lucide-react';
+import { FlowFailure, FlowRunDetails } from '../types';
+import { ArrowLeft, Copy, XCircle, FileJson, CheckCircle, AlertTriangle, Download, RefreshCw, Maximize2, Minimize2, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { ThemeToggle } from '../../../components/ThemeToggle';
 import Editor from '@monaco-editor/react';
@@ -25,8 +24,7 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
 }) => {
   const { theme } = useTheme();
   const api = useApiProviderContext();
-  const [selectedAction, setSelectedAction] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'visual' | 'json' | 'ai-export'>('visual');
+  const [viewMode, setViewMode] = useState<'json' | 'ai-export'>('json');
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [fetchedData, setFetchedData] = useState<{
@@ -271,22 +269,6 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
     }
   };
 
-  // Build action tree structure
-  const handleActionClick = (actionId: string, action: FlowRunAction) => {
-    setSelectedAction(actionId);
-    // The action data is already passed, no need to fetch
-    console.log('Selected action:', actionId, action);
-  };
-
-  const getSelectedActionData = () => {
-    if (!selectedAction) return null;
-    
-    if (selectedAction === 'trigger') {
-      return runDetails.properties.trigger;
-    }
-    
-    return runDetails.properties.actions?.[selectedAction] || null;
-  };
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -312,15 +294,6 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <div className="flex border rounded-md overflow-hidden">
-              <Button
-                variant={viewMode === 'visual' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('visual')}
-                className="rounded-none"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                Visual
-              </Button>
               <Button
                 variant={viewMode === 'json' ? 'default' : 'ghost'}
                 size="sm"
@@ -355,10 +328,7 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
       {/* Content */}
       <div className="flex-1 flex">
         {/* Flow Visualization */}
-        <div className={cn(
-          "overflow-hidden",
-          selectedAction && viewMode === 'visual' ? "w-1/2" : "flex-1"
-        )}>
+        <div className="overflow-hidden flex-1">
           {viewMode === 'json' ? (
             <ScrollArea className="h-full">
               <div className="p-6">
@@ -387,48 +357,19 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
                 </Card>
               </div>
             </ScrollArea>
-          ) : viewMode === 'ai-export' ? (
+          ) : (
             <ActionsPanel
               runDetails={runDetails}
               run={run}
               fetchedData={fetchedData}
             />
-          ) : (
-            <FlowVisualization
-              runDetails={runDetails}
-              selectedAction={selectedAction}
-              onActionClick={handleActionClick}
-            />
           )}
         </div>
 
-        {/* Action Details Panel */}
-        {selectedAction && viewMode === 'visual' && (
-          <div className="flex-1 border-l bg-card">
-            <ScrollArea className="h-full">
-              <div className="p-6">
-                {(() => {
-                  const action = getSelectedActionData();
-                  return action ? (
-                    <ActionDetails
-                      action={{ ...action, id: selectedAction }}
-                      onClose={() => setSelectedAction(null)}
-                    />
-                  ) : null;
-                })()}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
       </div>
     </div>
   );
 };
-
-interface ActionDetailsProps {
-  action: FlowRunAction & { id: string };
-  onClose: () => void;
-}
 
 
 // Actions Panel Component - Shows per-action breakdown
@@ -889,148 +830,6 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   );
 };
 
-const ActionDetails: React.FC<ActionDetailsProps> = ({ action, onClose }) => {
-  const { theme } = useTheme();
-  const [editingJson, setEditingJson] = useState(false);
-  const [jsonValue, setJsonValue] = useState(JSON.stringify(action, null, 2));
-  const [hasChanges, setHasChanges] = useState(false);
-
-  const handleJsonChange = (value: string | undefined) => {
-    if (value) {
-      setJsonValue(value);
-      setHasChanges(value !== JSON.stringify(action, null, 2));
-    }
-  };
-
-  const handleSave = () => {
-    // Here you would implement the actual save logic
-    console.log('Saving JSON:', jsonValue);
-    setHasChanges(false);
-    setEditingJson(false);
-  };
-
-  const handleCancel = () => {
-    setJsonValue(JSON.stringify(action, null, 2));
-    setHasChanges(false);
-    setEditingJson(false);
-  };
-
-  return (
-    <div className="space-y-4 h-full flex flex-col">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{action.name}</h2>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <XCircle className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="space-y-4 flex-1 flex flex-col min-h-0">
-        <div>
-          <h3 className="text-sm font-medium mb-2">Status</h3>
-          {getStatusBadge(action.status)}
-        </div>
-
-        {action.startTime && (
-          <div>
-            <h3 className="text-sm font-medium mb-2">Timing</h3>
-            <div className="text-sm space-y-1">
-              <div>
-                <span className="text-muted-foreground">Start:</span>{' '}
-                {new Date(action.startTime).toLocaleString()}
-              </div>
-              {action.endTime && (
-                <>
-                  <div>
-                    <span className="text-muted-foreground">End:</span>{' '}
-                    {new Date(action.endTime).toLocaleString()}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Duration:</span>{' '}
-                    {Math.round(
-                      (new Date(action.endTime).getTime() -
-                        new Date(action.startTime).getTime()) /
-                        1000
-                    )}s
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {action.error && (
-          <div>
-            <h3 className="text-sm font-medium mb-2 text-destructive">Error</h3>
-            <Card className="border-destructive/50">
-              <CardContent className="pt-4">
-                <p className="text-sm font-mono">{action.error.code}</p>
-                <p className="text-sm mt-2">{action.error.message}</p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium">Action JSON</h3>
-            <div className="flex items-center gap-2">
-              {editingJson && hasChanges && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCancel}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleSave}
-                  >
-                    <Save className="w-3 h-3 mr-1" />
-                    Save
-                  </Button>
-                </>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditingJson(!editingJson)}
-              >
-                {editingJson ? 'View' : 'Edit'}
-              </Button>
-            </div>
-          </div>
-          <Card className="flex-1 flex flex-col min-h-0">
-            <CardContent className="pt-4 pb-4 flex-1 flex flex-col min-h-0">
-              <div className="h-full min-h-0">
-                <Editor
-                  height="100%"
-                  language="json"
-                  theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                  value={jsonValue}
-                  onChange={handleJsonChange}
-                  options={{
-                    readOnly: !editingJson,
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    wordWrap: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 2,
-                    formatOnPaste: true,
-                    formatOnType: true,
-                  }}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const getStatusBadge = (status: string) => {
   switch (status) {
