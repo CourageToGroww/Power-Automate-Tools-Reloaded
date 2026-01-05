@@ -705,6 +705,29 @@ export const FlowEditorPage: React.FC = () => {
           onClick: () => validate(editor.getValue()),
         },
         {
+          key: 'export',
+          text: 'Export',
+          iconProps: {
+            iconName: 'Download',
+          },
+          disabled: !definition,
+          onClick: () => {
+            const content = editor ? editor.getValue() : definition;
+            const now = new Date();
+            const dateStr = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filename = `${name || 'Flow'} ${dateStr}.json`;
+            const blob = new Blob([content], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          },
+        },
+        {
           key: 'refresh',
           text: 'Refresh Token',
           iconProps: {
