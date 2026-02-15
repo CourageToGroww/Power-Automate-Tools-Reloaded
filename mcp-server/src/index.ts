@@ -2,6 +2,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { registerTools } from './mcp-tools';
 import { registerGraphTools } from './tools/graph';
+import { registerSharePointTools } from './tools/sharepoint';
+import { registerIntuneTools } from './tools/intune';
+import { registerFormsTools } from './tools/forms';
 
 async function main(): Promise<void> {
   const server = new McpServer({
@@ -14,6 +17,15 @@ async function main(): Promise<void> {
 
   // Register Graph API tools (prefixed graph__)
   registerGraphTools(server);
+
+  // Register SharePoint tools (prefixed sp__)
+  registerSharePointTools(server);
+
+  // Register Intune tools (prefixed intune__)
+  registerIntuneTools(server);
+
+  // Register Forms tools (prefixed forms__)
+  registerFormsTools(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

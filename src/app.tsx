@@ -22,12 +22,21 @@ import {
 // Register modules (auto-registers on import)
 import './modules/power-automate';
 import './modules/graph';
+import './modules/sharepoint';
+import './modules/intune';
+import './modules/forms';
 import { registerPARoutes } from './modules/power-automate/routes';
 import { registerGraphRoutes } from './modules/graph/routes';
+import { registerSharePointRoutes } from './modules/sharepoint/routes';
+import { registerIntuneRoutes } from './modules/intune/routes';
+import { registerFormsRoutes } from './modules/forms/routes';
 
 // Register frontend routes for each module
 registerPARoutes();
 registerGraphRoutes();
+registerSharePointRoutes();
+registerIntuneRoutes();
+registerFormsRoutes();
 
 initMonaco();
 initializeIcons();
