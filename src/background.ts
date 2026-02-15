@@ -6,6 +6,7 @@ import { extractFlowDataFromTabUrl } from './modules/power-automate/urlPatterns'
 
 // Register all modules (auto-registers on import)
 import './modules/power-automate';
+import './modules/graph';
 
 const DEBUG = true;
 

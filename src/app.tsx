@@ -21,10 +21,13 @@ import {
 
 // Register modules (auto-registers on import)
 import './modules/power-automate';
+import './modules/graph';
 import { registerPARoutes } from './modules/power-automate/routes';
+import { registerGraphRoutes } from './modules/graph/routes';
 
 // Register frontend routes for each module
 registerPARoutes();
+registerGraphRoutes();
 
 initMonaco();
 initializeIcons();

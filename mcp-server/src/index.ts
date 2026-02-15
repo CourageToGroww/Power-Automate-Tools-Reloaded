@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { registerTools } from './mcp-tools';
+import { registerGraphTools } from './tools/graph';
 
 async function main(): Promise<void> {
   const server = new McpServer({
@@ -11,9 +12,8 @@ async function main(): Promise<void> {
   // Register Power Automate tools (prefixed pa__)
   registerTools(server);
 
-  // Future: register tools from other service modules here
-  // registerGraphTools(server);
-  // registerSharePointTools(server);
+  // Register Graph API tools (prefixed graph__)
+  registerGraphTools(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
