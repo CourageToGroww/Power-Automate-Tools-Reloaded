@@ -5,6 +5,7 @@ import { registerGraphTools } from './tools/graph';
 import { registerSharePointTools } from './tools/sharepoint';
 import { registerIntuneTools } from './tools/intune';
 import { registerFormsTools } from './tools/forms';
+import { registerToolboxTools } from './tools/toolbox';
 
 async function main(): Promise<void> {
   const server = new McpServer({
@@ -26,6 +27,9 @@ async function main(): Promise<void> {
 
   // Register Forms tools (prefixed forms__)
   registerFormsTools(server);
+
+  // Register Toolbox tools (prefixed toolbox__)
+  registerToolboxTools(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

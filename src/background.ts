@@ -10,6 +10,7 @@ import './modules/graph';
 import './modules/sharepoint';
 import './modules/intune';
 import './modules/forms';
+import './core/toolbox';
 
 const DEBUG = true;
 

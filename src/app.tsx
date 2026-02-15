@@ -18,6 +18,7 @@ import {
   MultiServiceApiProvider,
   useApiProviderContext,
 } from './core/providers/MultiServiceApiProvider';
+import { ToolboxProvider } from './core/toolbox/ToolboxProvider';
 
 // Register modules (auto-registers on import)
 import './modules/power-automate';
@@ -25,11 +26,13 @@ import './modules/graph';
 import './modules/sharepoint';
 import './modules/intune';
 import './modules/forms';
+import './core/toolbox';
 import { registerPARoutes } from './modules/power-automate/routes';
 import { registerGraphRoutes } from './modules/graph/routes';
 import { registerSharePointRoutes } from './modules/sharepoint/routes';
 import { registerIntuneRoutes } from './modules/intune/routes';
 import { registerFormsRoutes } from './modules/forms/routes';
+import { registerToolboxRoutes } from './core/toolbox/routes';
 
 // Register frontend routes for each module
 registerPARoutes();
@@ -37,6 +40,7 @@ registerGraphRoutes();
 registerSharePointRoutes();
 registerIntuneRoutes();
 registerFormsRoutes();
+registerToolboxRoutes();
 
 initMonaco();
 initializeIcons();
@@ -59,7 +63,9 @@ function App() {
   return (
     <HashRouter>
       <MultiServiceApiProvider>
-        <AppContent />
+        <ToolboxProvider>
+          <AppContent />
+        </ToolboxProvider>
       </MultiServiceApiProvider>
     </HashRouter>
   );
@@ -75,7 +81,17 @@ function AppContent() {
   const envId = urlParams.get('envId');
   const flowId = urlParams.get('flowId');
 
+  // Check if current path is Toolbox (which doesn't require auth)
+  const isToolboxPath = window.location.hash.includes('/toolbox');
+
   useEffect(() => {
+    // Toolbox doesn't require authentication, skip auth checks
+    if (isToolboxPath) {
+      setIsWaitingForAuth(false);
+      setAuthError(null);
+      return;
+    }
+
     // For PA module: validate URL params
     if (envId || flowId) {
       if (!envId || !flowId) {
@@ -104,7 +120,7 @@ function AppContent() {
     }
 
     return () => clearTimeout(timeout);
-  }, [apiProvider.isApiReady, envId, flowId]);
+  }, [apiProvider.isApiReady, envId, flowId, isToolboxPath]);
 
   const handleRefresh = () => {
     window.location.reload();
@@ -142,7 +158,7 @@ function AppContent() {
             <p>If this takes too long, try refreshing the service page first.</p>
           </div>
         </Stack>
-      ) : apiProvider.isApiReady && !authError ? (
+      ) : (apiProvider.isApiReady || isToolboxPath) && !authError ? (
         <DynamicRouter />
       ) : !authError ? (
         <Stack
