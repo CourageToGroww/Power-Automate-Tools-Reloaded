@@ -1,0 +1,7 @@
+{
+  "name": "com.m365workbench.relay",
+  "description": "M365 Workbench Native Messaging Host",
+  "path": "/PLACEHOLDER/mcp-server/dist/native-host.js",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://EXTENSION_ID/"]
+}

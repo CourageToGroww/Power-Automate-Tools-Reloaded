@@ -2,6 +2,7 @@ import { MessageBarType } from "@fluentui/react/lib/MessageBar";
 import { useEffect, useState } from "react";
 import { useMessageBar } from "../../common/components/Messages";
 import { useApiProviderContext } from "../../common/providers/ApiProvider";
+import { useDataSources } from "../../contexts/DataSourceContext";
 import { FlowFailure, FlowRun, FlowRunDetails, FlowRunAction } from "./types";
 
 const DEBUG = true;
@@ -28,10 +29,14 @@ export const usePreviousRuns = () => {
   const [debugMode, setDebugMode] = useState<boolean>(false);
 
   const api = useApiProviderContext();
+  const { activeSource } = useDataSources();
   const query = new URLSearchParams(location.search);
 
-  const envId = query.get("envId");
-  const flowId = query.get("flowId");
+  // Prefer activeSource context (DataSource system) over URL params (legacy)
+  const envId = (activeSource?.serviceType === 'power-automate'
+    ? activeSource.context.envId : null) ?? query.get("envId");
+  const flowId = (activeSource?.serviceType === 'power-automate'
+    ? activeSource.context.flowId : null) ?? query.get("flowId");
 
   debugLog('Flow failures initialized with envId:', envId, 'flowId:', flowId);
 

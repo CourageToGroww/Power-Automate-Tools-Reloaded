@@ -17,8 +17,6 @@ import { LoaderModal } from '../../common/components/LoaderModal';
 import { Messages } from '../../common/components/Messages';
 import { FlowValidationResult } from './FlowValidationResult';
 import { useFlowEditor } from './useFlowEditor';
-import { ThemeToggle } from '../../components/ThemeToggle';
-import { useTheme } from '../../contexts/ThemeContext';
 
 const editorContainerClassName = mergeStyles({
   flex: 1,
@@ -97,12 +95,11 @@ function findMatchingBrackets(text: string, position: number): { start: number; 
 // Component to display flow actions in a structured view
 interface FlowActionsViewProps {
   definition: string;
-  theme: string;
   onSave: (newDefinition: string) => Promise<void>;
   onValidate: (newDefinition: string) => void;
 }
 
-const FlowActionsView: React.FC<FlowActionsViewProps> = ({ definition, theme, onSave, onValidate }) => {
+const FlowActionsView: React.FC<FlowActionsViewProps> = ({ definition, onSave, onValidate }) => {
   const [expandedAction, setExpandedAction] = useState<string | null>(null);
   const [maximizedAction, setMaximizedAction] = useState<string | null>(null);
   const [copiedAction, setCopiedAction] = useState<string | null>(null);
@@ -375,7 +372,7 @@ const FlowActionsView: React.FC<FlowActionsViewProps> = ({ definition, theme, on
                     <Editor
                       height="100%"
                       language="json"
-                      theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                      theme="vs-dark"
                       value={getActionValue(item.id, item.data)}
                       onChange={(value) => handleActionChange(item.id, value)}
                       options={{
@@ -406,8 +403,7 @@ const FlowActionsView: React.FC<FlowActionsViewProps> = ({ definition, theme, on
         return (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
             <div className={cn(
-              "w-full max-w-5xl h-[85vh] rounded-lg shadow-2xl flex flex-col",
-              theme === 'dark' ? 'bg-zinc-900' : 'bg-white'
+              "w-full max-w-5xl h-[85vh] rounded-lg shadow-2xl flex flex-col bg-zinc-900"
             )}>
               {/* Modal Header */}
               <div className="flex items-center justify-between p-4 border-b">
@@ -491,7 +487,7 @@ const FlowActionsView: React.FC<FlowActionsViewProps> = ({ definition, theme, on
                 <Editor
                   height="100%"
                   language="json"
-                  theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                  theme="vs-dark"
                   value={getActionValue(item.id, item.data)}
                   onChange={(value) => handleActionChange(item.id, value)}
                   options={{
@@ -515,145 +511,72 @@ const FlowActionsView: React.FC<FlowActionsViewProps> = ({ definition, theme, on
 };
 
 export const FlowEditorPage: React.FC = () => {
-  const { theme } = useTheme();
   const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor>(
     null as any
   );
   const [viewMode, setViewMode] = useState<'full' | 'actions'>('full');
-  
-  // Apply dark mode styles to command bar
+
+  // Apply dark mode styles to FluentUI command bar
   useEffect(() => {
     const style = document.createElement('style');
     style.id = 'flow-editor-dark-mode';
-    
-    if (theme === 'dark') {
-      style.textContent = `
-        .ms-CommandBar {
-          background-color: rgb(17 24 39) !important;
-          border-bottom: 1px solid rgb(31 41 55) !important;
-        }
-        .ms-CommandBar-primaryCommand,
-        .ms-CommandBar-secondaryCommand {
-          background-color: rgb(17 24 39) !important;
-        }
-        .ms-CommandBarItem-link,
-        .ms-CommandBarItem-text,
-        .ms-CommandBarItem-link .ms-CommandBarItem-text,
-        .ms-Button-label,
-        .ms-CommandBar .ms-Button-label {
-          color: rgb(229 231 235) !important;
-        }
-        .ms-CommandBarItem-link:hover,
-        .ms-CommandBarItem-link:hover .ms-CommandBarItem-text,
-        .ms-CommandBarItem-link:hover .ms-Button-label {
-          background-color: rgb(31 41 55) !important;
-          color: rgb(229 231 235) !important;
-        }
-        .ms-CommandBarItem-icon,
-        .ms-Icon,
-        .ms-CommandBarItem-link .ms-Icon {
-          color: rgb(156 163 175) !important;
-        }
-        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon,
-        .ms-CommandBarItem-link:hover .ms-Icon {
-          color: rgb(229 231 235) !important;
-        }
-        .ms-CommandBarItem-link.is-disabled,
-        .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-text,
-        .ms-CommandBarItem-link.is-disabled .ms-Button-label {
-          color: rgb(75 85 99) !important;
-        }
-        .ms-CommandBarItem-link.is-disabled .ms-CommandBarItem-icon,
-        .ms-CommandBarItem-link.is-disabled .ms-Icon {
-          color: rgb(75 85 99) !important;
-        }
-        /* Force all text elements to use the right color */
-        .ms-CommandBar,
-        .ms-CommandBar *,
-        .ms-CommandBar button,
-        .ms-CommandBar button span,
-        .ms-CommandBar .ms-Button,
-        .ms-CommandBar .ms-Button-flexContainer,
-        .ms-CommandBar .ms-Button-textContainer,
-        .ms-Button--commandBar,
-        .ms-Button--commandBar *,
-        .ms-Button--commandBar .ms-Button-label,
-        .ms-Button--commandBar .ms-Button-textContainer,
-        .ms-Button--commandBar .ms-Button-flexContainer,
-        .ms-OverflowSet .ms-Button,
-        .ms-OverflowSet .ms-Button *,
-        .ms-OverflowSet .ms-Button-label,
-        .primarySet-121 .ms-Button,
-        .primarySet-121 .ms-Button-label,
-        .primarySet-121 button,
-        .primarySet-121 button span {
-          color: rgb(229 231 235) !important;
-          background-color: transparent !important;
-        }
-        .ms-CommandBar button:hover,
-        .ms-CommandBar button:hover *,
-        .ms-Button--commandBar:hover,
-        .ms-Button--commandBar:hover * {
-          color: rgb(229 231 235) !important;
-          background-color: rgb(31 41 55) !important;
-        }
-        /* Ensure the command bar buttons have the right background */
-        .ms-CommandBar .ms-Button--commandBar,
-        .ms-OverflowSet-item .ms-Button {
-          background-color: rgb(17 24 39) !important;
-        }
-        .ms-CommandBar .ms-Button--commandBar:hover,
-        .ms-OverflowSet-item .ms-Button:hover {
-          background-color: rgb(31 41 55) !important;
-        }
-      `;
-    } else {
-      // Light mode - ensure proper colors
-      style.textContent = `
-        .ms-CommandBar {
-          background-color: #f3f2f1 !important;
-          border-bottom: 1px solid #e1e1e1 !important;
-        }
-        .ms-CommandBarItem-link,
-        .ms-CommandBarItem-text,
-        .ms-CommandBarItem-link .ms-CommandBarItem-text,
-        .ms-Button-label,
-        .ms-CommandBar .ms-Button-label {
-          color: #323130 !important;
-        }
-        .ms-CommandBarItem-link:hover,
-        .ms-CommandBarItem-link:hover .ms-CommandBarItem-text,
-        .ms-CommandBarItem-link:hover .ms-Button-label {
-          background-color: #edebe9 !important;
-          color: #201f1e !important;
-        }
-        .ms-CommandBarItem-icon,
-        .ms-Icon,
-        .ms-CommandBarItem-link .ms-Icon {
-          color: #605e5c !important;
-        }
-        .ms-CommandBarItem-link:hover .ms-CommandBarItem-icon,
-        .ms-CommandBarItem-link:hover .ms-Icon {
-          color: #323130 !important;
-        }
-      `;
-    }
-    
-    // Remove existing style if it exists
-    const existingStyle = document.getElementById('flow-editor-dark-mode');
-    if (existingStyle) {
-      existingStyle.remove();
-    }
-    
-    document.head.appendChild(style);
-    
-    return () => {
-      const styleToRemove = document.getElementById('flow-editor-dark-mode');
-      if (styleToRemove) {
-        styleToRemove.remove();
+    style.textContent = `
+      .ms-CommandBar,
+      .ms-CommandBar-primaryCommand,
+      .ms-CommandBar-secondaryCommand {
+        background-color: rgb(17 24 39) !important;
+        border-bottom: 1px solid rgb(31 41 55) !important;
       }
+      .ms-CommandBarItem-link,
+      .ms-CommandBarItem-text,
+      .ms-Button-label,
+      .ms-CommandBar .ms-Button-label,
+      .ms-CommandBar button,
+      .ms-CommandBar button span,
+      .ms-CommandBar .ms-Button,
+      .ms-CommandBar .ms-Button-flexContainer,
+      .ms-CommandBar .ms-Button-textContainer,
+      .ms-Button--commandBar,
+      .ms-Button--commandBar *,
+      .ms-OverflowSet .ms-Button,
+      .ms-OverflowSet .ms-Button * {
+        color: rgb(229 231 235) !important;
+        background-color: transparent !important;
+      }
+      .ms-CommandBarItem-icon,
+      .ms-Icon {
+        color: rgb(156 163 175) !important;
+      }
+      .ms-CommandBar button:hover,
+      .ms-CommandBar button:hover *,
+      .ms-Button--commandBar:hover,
+      .ms-Button--commandBar:hover * {
+        background-color: rgb(31 41 55) !important;
+        color: rgb(229 231 235) !important;
+      }
+      .ms-CommandBar .ms-Button--commandBar,
+      .ms-OverflowSet-item .ms-Button {
+        background-color: rgb(17 24 39) !important;
+      }
+      .ms-CommandBar .ms-Button--commandBar:hover,
+      .ms-OverflowSet-item .ms-Button:hover {
+        background-color: rgb(31 41 55) !important;
+      }
+      .ms-CommandBarItem-link.is-disabled,
+      .ms-CommandBarItem-link.is-disabled * {
+        color: rgb(75 85 99) !important;
+      }
+    `;
+
+    const existingStyle = document.getElementById('flow-editor-dark-mode');
+    if (existingStyle) existingStyle.remove();
+    document.head.appendChild(style);
+
+    return () => {
+      const s = document.getElementById('flow-editor-dark-mode');
+      if (s) s.remove();
     };
-  }, [theme]);
+  }, []);
   
   const {
     name,
@@ -766,10 +689,6 @@ export const FlowEditorPage: React.FC = () => {
           </div>
         )
       },
-      {
-        key: 'theme',
-        onRender: () => <ThemeToggle />
-      }
     ],
     [viewMode]
   );
@@ -788,9 +707,8 @@ export const FlowEditorPage: React.FC = () => {
       {!!definition && (
         <div className={editorContainerClassName}>
           {viewMode === 'actions' ? (
-            <FlowActionsView 
-              definition={definition} 
-              theme={theme}
+            <FlowActionsView
+              definition={definition}
               onSave={async (newDef) => {
                 const result = await saveDefinition(name, environment, newDef);
                 if (result && editor) {
@@ -803,7 +721,7 @@ export const FlowEditorPage: React.FC = () => {
             <Editor
               defaultValue={definition}
             language="json"
-            theme={theme === 'dark' ? 'vs-dark' : 'light'}
+            theme="vs-dark"
             onMount={(editor) => {
               setEditor(editor);
               

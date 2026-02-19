@@ -7,9 +7,7 @@ import { ScrollArea } from '../../../components/ui/scroll-area';
 import { FlowFailure, FlowRunDetails } from '../types';
 import { ArrowLeft, Copy, XCircle, FileJson, CheckCircle, AlertTriangle, Download, RefreshCw, Maximize2, Minimize2, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import { ThemeToggle } from '../../../components/ThemeToggle';
 import Editor from '@monaco-editor/react';
-import { useTheme } from '../../../contexts/ThemeContext';
 
 interface FlowRunEditorProps {
   run: FlowFailure;
@@ -22,7 +20,6 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
   runDetails,
   onBack,
 }) => {
-  const { theme } = useTheme();
   const api = useApiProviderContext();
   const [viewMode, setViewMode] = useState<'json' | 'ai-export'>('json');
   const [copiedJson, setCopiedJson] = useState(false);
@@ -292,7 +289,6 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <ThemeToggle />
             <div className="flex border rounded-md overflow-hidden">
               <Button
                 variant={viewMode === 'json' ? 'default' : 'ghost'}
@@ -341,7 +337,7 @@ export const FlowRunEditor: React.FC<FlowRunEditorProps> = ({
                       <Editor
                         height="100%"
                         language="json"
-                        theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                        theme="vs-dark"
                         value={JSON.stringify(runDetails, null, 2)}
                         options={{
                           readOnly: true,
@@ -389,7 +385,6 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   run,
   fetchedData,
 }) => {
-  const { theme } = useTheme();
   const [expandedAction, setExpandedAction] = useState<string | null>(null);
   const [maximizedAction, setMaximizedAction] = useState<string | null>(null);
   const [copiedAction, setCopiedAction] = useState<string | null>(null);
@@ -663,7 +658,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
                         <Editor
                           height="100%"
                           language="json"
-                          theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                          theme="vs-dark"
                           value={JSON.stringify(action.inputs, null, 2) || 'null'}
                           options={{
                             readOnly: true,
@@ -700,7 +695,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
                         <Editor
                           height="100%"
                           language="json"
-                          theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                          theme="vs-dark"
                           value={JSON.stringify(action.outputs, null, 2) || 'null'}
                           options={{
                             readOnly: true,
@@ -747,8 +742,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         return (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
             <div className={cn(
-              "w-full max-w-5xl max-h-[90vh] rounded-lg shadow-2xl flex flex-col",
-              theme === 'dark' ? 'bg-zinc-900' : 'bg-white'
+              "w-full max-w-5xl max-h-[90vh] rounded-lg shadow-2xl flex flex-col bg-zinc-900"
             )}>
               {/* Modal Header */}
               <div className="flex items-center justify-between p-4 border-b">
@@ -808,7 +802,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
                 <Editor
                   height="100%"
                   language="json"
-                  theme={theme === 'dark' ? 'vs-dark' : 'light'}
+                  theme="vs-dark"
                   value={JSON.stringify(fullActionData, null, 2)}
                   options={{
                     readOnly: true,

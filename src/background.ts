@@ -1,493 +1,676 @@
 import { Actions } from "./common/types/backgroundActions";
-import jwtDecode from "jwt-decode";
+import { TokenStore } from "./common/services/TokenStore";
+import { detectService, ALL_M365_URL_FILTERS, ServiceType, ServiceContext } from "./common/services/ServiceDetector";
+import { DataSource } from "./common/types/dataSource";
 
-interface State {
-  token?: string;
+interface LegacyState {
   url?: URL;
   initiatorTabId?: number;
   appTabId?: number;
-  apiUrl?: string;
-  tokenExpires?: Date;
   lastMatchedRequest?: { envId: string; flowId: string } | null;
 }
 
-const state: State = {};
+const legacyState: LegacyState = {};
+const tokenStore = new TokenStore();
 
-// Enable debugging - can be disabled in production
+// Data source capture state
+let pendingSources: DataSource[] = [];
+
+// Relay state
+let relayEnabled = false;
+let relayTransport: 'native' | 'http' | 'none' = 'none';
+let nativePort: chrome.runtime.Port | null = null;
+
 const DEBUG = true;
 
 function debugLog(...args: any[]) {
-  if (DEBUG) {
-    console.log('[PA-Tools Background]', ...args);
-  }
+  if (DEBUG) console.log('[M365-Workbench BG]', ...args);
 }
 
 function debugError(...args: any[]) {
-  if (DEBUG) {
-    console.error('[PA-Tools Background Error]', ...args);
+  if (DEBUG) console.error('[M365-Workbench BG Error]', ...args);
+}
+
+// Restore relay state from storage
+chrome.storage.local.get(['relayEnabled'], (result) => {
+  if (result.relayEnabled) {
+    relayEnabled = true;
+    connectRelay();
+  }
+});
+
+chrome.action.enable();
+debugLog('Extension initialized');
+
+// ─── Extension icon click ───────────────────────────────────────────────────
+
+chrome.action.onClicked.addListener((tab) => {
+  debugLog('Extension clicked, tab:', tab.url, 'tab.id:', tab.id);
+
+  // Build a DataSource from the current tab
+  const source = buildDataSourceFromTab(tab);
+
+  if (source) {
+    debugLog('Built data source:', source.serviceType, source.label);
+
+    // Also update legacy state for backward compat with PA flow editor
+    if (source.serviceType === 'power-automate' && source.context.envId && source.context.flowId) {
+      legacyState.lastMatchedRequest = {
+        envId: source.context.envId,
+        flowId: source.context.flowId,
+      };
+      legacyState.initiatorTabId = tab.id;
+    }
+  } else {
+    debugLog('No service detected from tab URL, opening workbench anyway');
+  }
+
+  // Always open or focus the workbench tab, even if no service was detected.
+  // The old behavior always opened a tab; the workbench shows instructions if no data is available.
+  sendToAppTabOrQueue(source);
+});
+
+function buildDataSourceFromTab(tab: chrome.tabs.Tab): DataSource | null {
+  if (!tab.url) return null;
+
+  const { service, context } = detectService(tab.url);
+  if (service === 'unknown') return null;
+
+  // Convert ServiceContext to Record<string, string> for DataSource
+  const ctxRecord: Record<string, string> = {};
+  if (context.envId) ctxRecord.envId = context.envId;
+  if (context.flowId) ctxRecord.flowId = context.flowId;
+  if (context.siteId) ctxRecord.siteId = context.siteId;
+  if (context.listId) ctxRecord.listId = context.listId;
+  if (context.deviceId) ctxRecord.deviceId = context.deviceId;
+  if (context.formId) ctxRecord.formId = context.formId;
+  if (context.tenantId) ctxRecord.tenantId = context.tenantId;
+
+  // For PA, also try to extract envId/flowId from the browser URL if not found in API URL patterns
+  if (service === 'power-automate' && (!ctxRecord.envId || !ctxRecord.flowId)) {
+    const extracted = extractFlowDataFromTabUrl(tab.url);
+    if (extracted) {
+      ctxRecord.envId = extracted.envId;
+      ctxRecord.flowId = extracted.flowId;
+    }
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    serviceType: service,
+    context: ctxRecord,
+    label: deriveSourceLabel(service, ctxRecord, tab.title),
+    sourceUrl: tab.url,
+    originTabId: tab.id,
+    capturedAt: Date.now(),
+  };
+}
+
+function deriveSourceLabel(
+  service: string,
+  context: Record<string, string>,
+  tabTitle?: string
+): string {
+  // Try to derive a meaningful label from context
+  if (service === 'sharepoint' && context.listId) {
+    return context.listId;
+  }
+  if (service === 'sharepoint' && context.siteId) {
+    return context.siteId;
+  }
+  if (service === 'forms' && context.formId) {
+    return `Form ${context.formId.substring(0, 8)}`;
+  }
+  if (service === 'power-automate' && context.flowId) {
+    return `Flow ${context.flowId.substring(0, 8)}`;
+  }
+
+  // Fall back to cleaned tab title
+  if (tabTitle) {
+    return tabTitle
+      .replace(/\s*[-|]\s*(Microsoft|SharePoint|Power Automate|Intune|Forms).*$/i, '')
+      .trim() || tabTitle.substring(0, 50);
+  }
+
+  return service;
+}
+
+function sendToAppTabOrQueue(source: DataSource | null) {
+  if (legacyState.appTabId) {
+    // Check if the tab still exists
+    chrome.tabs.get(legacyState.appTabId, (existingTab) => {
+      if (chrome.runtime.lastError || !existingTab) {
+        debugLog('App tab no longer exists, creating new one');
+        delete legacyState.appTabId;
+        queueAndOpenNew(source);
+        return;
+      }
+
+      // Tab exists - send source directly and focus it
+      if (source) {
+        chrome.tabs.sendMessage(legacyState.appTabId!, {
+          type: 'capture-source',
+          source,
+        } as Actions, () => {
+          if (chrome.runtime.lastError) {
+            // Tab exists but can't receive messages (e.g. still loading)
+            // The source will be in pendingSources, it'll get flushed on app-loaded
+            debugLog('Failed to send to app tab, queuing source:', chrome.runtime.lastError.message);
+            pendingSources.push(source);
+          }
+        });
+      }
+
+      // Focus the existing tab
+      chrome.tabs.update(legacyState.appTabId!, { active: true });
+      if (existingTab.windowId) {
+        chrome.windows.update(existingTab.windowId, { focused: true });
+      }
+    });
+  } else {
+    queueAndOpenNew(source);
   }
 }
 
-// Start with extension enabled so users can always try to click it
-chrome.action.enable();
-debugLog('Extension initialized, action enabled');
+function queueAndOpenNew(source: DataSource | null) {
+  if (source) {
+    pendingSources.push(source);
+  }
 
-chrome.action.onClicked.addListener((tab) => {
-  debugLog('Extension clicked, current state:', {
-    hasLastMatchedRequest: !!state.lastMatchedRequest,
-    hasToken: !!state.token,
-    tokenExpired: isTokenExpired(),
-    currentTabUrl: tab.url
+  // For PA sources with flow context, pass envId/flowId as URL params for backward compat.
+  // This lets the FlowEditor work immediately without waiting for the capture-source message.
+  let appUrl = chrome.runtime.getURL("app.html");
+  if (source?.serviceType === 'power-automate' && source.context.envId && source.context.flowId) {
+    appUrl += `?envId=${encodeURIComponent(source.context.envId)}&flowId=${encodeURIComponent(source.context.flowId)}`;
+  }
+
+  chrome.tabs.create({ url: appUrl }, (appTab) => {
+    if (chrome.runtime.lastError) {
+      debugError('Failed to create app tab:', chrome.runtime.lastError);
+      showNotification('Failed to open extension. Please try again.');
+      return;
+    }
+    legacyState.appTabId = appTab.id;
+    debugLog('App tab created:', appTab.id);
   });
-
-  // If we don't have a matched request, try to extract from current tab URL
-  if (!state.lastMatchedRequest && tab.url) {
-    debugLog('No matched request found, trying to extract from current tab URL');
-    state.lastMatchedRequest = extractFlowDataFromTabUrl(tab.url);
-    if (state.lastMatchedRequest) {
-      state.initiatorTabId = tab.id;
-      debugLog('Flow data extracted from current tab:', state.lastMatchedRequest);
-    }
-  }
-
-  if (!state.lastMatchedRequest) {
-    debugError('No flow data found. Make sure you are on a Power Automate flow page.');
-    debugLog('Current URL being analyzed:', tab.url);
-    
-    // Show a more detailed notification with the URL for debugging
-    const urlInfo = tab.url ? ` Current URL: ${tab.url.substring(0, 100)}${tab.url.length > 100 ? '...' : ''}` : '';
-    showNotification(`Please navigate to a Power Automate flow page first.${urlInfo ? ' Check console for URL details.' : ''}`);
-    
-    // Also log detailed URL analysis
-    if (tab.url) {
-      debugLog('URL Analysis:');
-      debugLog('- Full URL:', tab.url);
-      debugLog('- Contains "flow":', tab.url.includes('flow'));
-      debugLog('- Contains "powerautomate":', tab.url.includes('powerautomate'));
-      debugLog('- Contains "make.":', tab.url.includes('make.'));
-      debugLog('- Contains environment pattern:', /environment/i.test(tab.url));
-      debugLog('- Contains GUID pattern:', /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(tab.url));
-    }
-    
-    return;
-  }
-
-  // If we have flow data but no token, show helpful message
-  if (!state.token) {
-    debugError('No authentication token found');
-    showNotification('No authentication detected. Please refresh the Power Automate page and interact with the flow (click edit, details, etc.) then try again.');
-    return;
-  }
-
-  if (isTokenExpired()) {
-    debugError('Token expired, requesting refresh');
-    showNotification('Token expired. Please refresh the Power Automate page and try again.');
-    return;
-  }
-
-  const appUrl = `${chrome.runtime.getURL("app.html")}?envId=${
-    state.lastMatchedRequest.envId
-  }&flowId=${state.lastMatchedRequest.flowId}`;
-  
-  debugLog('Creating app tab with URL:', appUrl);
-
-  chrome.tabs.create(
-    {
-      url: appUrl,
-    },
-    (appTab) => {
-      if (chrome.runtime.lastError) {
-        debugError('Failed to create app tab:', chrome.runtime.lastError);
-        showNotification('Failed to open extension. Please try again.');
-        return;
-      }
-      state.appTabId = appTab.id;
-      debugLog('App tab created with ID:', appTab.id);
-    }
-  );
-});
+}
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (state.appTabId === tabId) {
-    debugLog('App tab closed:', tabId);
-    delete state.appTabId;
+  if (legacyState.appTabId === tabId) {
+    delete legacyState.appTabId;
   }
 });
 
-// Listen to multiple API endpoints for better coverage
+// ─── Multi-service token capture ────────────────────────────────────────────
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
-  listenFlowApiRequests,
-  {
-    urls: [
-      "https://*.api.flow.microsoft.com/*",
-      "https://*.api.powerautomate.com/*",
-      "https://*.api.powerapps.com/*",
-      "https://unitedstates.api.powerapps.com/*",
-      "https://europe.api.powerapps.com/*",
-      "https://asia.api.powerapps.com/*",
-      "https://australia.api.powerapps.com/*",
-      "https://india.api.powerapps.com/*",
-      "https://japan.api.powerapps.com/*",
-      "https://canada.api.powerapps.com/*",
-      "https://southamerica.api.powerapps.com/*",
-      "https://unitedkingdom.api.powerapps.com/*",
-      "https://france.api.powerapps.com/*",
-      "https://germany.api.powerapps.com/*",
-      "https://switzerland.api.powerapps.com/*",
-      "https://usgov.api.powerapps.us/*",
-      "https://usgovhigh.api.powerapps.us/*",
-      "https://dod.api.powerapps.us/*"
-    ],
-  },
+  handleWebRequest,
+  { urls: ALL_M365_URL_FILTERS },
   ["requestHeaders"]
 );
 
+function handleWebRequest(details: chrome.webRequest.WebRequestHeadersDetails) {
+  if (legacyState.appTabId === details.tabId) return;
+
+  const authHeader = details.requestHeaders?.find(
+    (x) => x.name.toLowerCase() === "authorization"
+  );
+  const token = authHeader?.value;
+  if (!token) return;
+
+  const { service, context } = detectService(details.url);
+  if (service === 'unknown') return;
+
+  const url = new URL(details.url);
+  const apiUrl = `${url.protocol}//${url.hostname}/`;
+  const existing = tokenStore.getToken(service);
+
+  if (!existing || existing.token !== token) {
+    debugLog(`New ${service} token captured from ${url.hostname}`);
+    tokenStore.setToken(service, token, apiUrl, context);
+
+    // Broadcast to extension UI
+    broadcastToAppTab({
+      type: 'service-token-changed',
+      service,
+      token,
+      apiUrl,
+      context,
+    });
+
+    // Forward to relay if enabled
+    sendCredentialToRelay(service, token, apiUrl, context);
+
+    // When a Graph token is captured, propagate to dependent services
+    // so their tabs show as "connected" (Graph tokens work for SP/Intune/Forms API calls)
+    if (service === 'graph') {
+      const graphDependents: ServiceType[] = ['sharepoint', 'intune', 'forms'];
+      for (const dep of graphDependents) {
+        if (!tokenStore.hasValidToken(dep)) {
+          broadcastToAppTab({
+            type: 'service-token-changed',
+            service: dep,
+            token,
+            apiUrl,
+            context: { ...context, service: dep },
+          });
+        }
+      }
+    }
+
+    // Legacy Power Automate compatibility
+    if (service === 'power-automate') {
+      handleLegacyPowerAutomateRequest(details, token, apiUrl);
+    }
+  }
+}
+
+function handleLegacyPowerAutomateRequest(
+  details: chrome.webRequest.WebRequestHeadersDetails,
+  token: string,
+  apiUrl: string
+) {
+  legacyState.lastMatchedRequest = extractFlowDataFromUrl(details);
+
+  // Also send legacy token-changed for backward compat with existing FlowEditor
+  broadcastToAppTab({
+    type: 'token-changed',
+    token,
+    apiUrl,
+  });
+
+  if (legacyState.lastMatchedRequest) {
+    legacyState.initiatorTabId = details.tabId;
+    chrome.action.enable();
+  } else {
+    tryExtractFlowDataFromTabUrl(details.tabId);
+  }
+}
+
+// ─── Message handling ───────────────────────────────────────────────────────
+
 chrome.runtime.onMessage.addListener(
   (action: Actions, sender, sendResponse) => {
-    debugLog('Received message:', action.type, 'from tab:', sender.tab?.id);
-    
-    if (sender.tab?.id === state.appTabId) {
-      switch (action.type) {
-        default:
-          sendResponse();
-          break;
-        case "app-loaded":
-          debugLog('App loaded, sending token');
-          sendResponse();
-          sendTokenChanged();
-          break;
-        case "refresh":
-          debugLog('Refresh requested');
-          sendResponse();
-          refreshInitiator();
-          break;
-        case "ai-api-call":
-          debugLog('AI API call requested');
-          handleAIApiCall(action, sendResponse);
-          return true; // Keep message channel open for async response
-      }
-    } else {
-      debugLog('Message from non-app tab, ignoring');
-      sendResponse();
+    debugLog('Message received:', action.type);
+
+    switch (action.type) {
+      case 'app-loaded':
+        // Recover appTabId from sender (handles service worker restart losing in-memory state)
+        if (sender.tab?.id) {
+          legacyState.appTabId = sender.tab.id;
+          debugLog('App loaded, recovered appTabId:', legacyState.appTabId);
+        }
+        sendResponse();
+        // Wait for token store to finish loading from storage before sending tokens
+        tokenStore.waitForLoad().then(() => {
+          debugLog('Token store loaded, sending tokens. Services:', tokenStore.getAllServices());
+          // Send legacy token-changed for existing FlowEditor
+          sendLegacyTokenChanged();
+          // Send all service tokens
+          sendAllServiceTokens();
+          // Flush any pending data sources
+          if (pendingSources.length > 0) {
+            debugLog('Flushing', pendingSources.length, 'pending sources');
+            for (const source of pendingSources) {
+              broadcastToAppTab({ type: 'capture-source', source });
+            }
+            pendingSources = [];
+          }
+        });
+        break;
+
+      case 'refresh':
+        sendResponse();
+        refreshInitiator();
+        break;
+
+      case 'ai-api-call':
+        handleAIApiCall(action, sendResponse);
+        return true;
+
+      case 'get-service-data':
+        handleGetServiceData(action, sendResponse);
+        return true;
+
+      case 'get-service-status':
+        sendResponse({
+          type: 'service-status-response',
+          services: tokenStore.getStatus(),
+        });
+        break;
+
+      case 'relay-toggle':
+        handleRelayToggle(action.enabled, sendResponse);
+        return true;
+
+      default:
+        sendResponse();
+        break;
     }
   }
 );
 
-function isTokenExpired(): boolean {
-  if (!state.tokenExpires) return true;
-  // Add 5 minute buffer before expiration
-  const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
-  return new Date().getTime() > (state.tokenExpires.getTime() - bufferTime);
+function sendLegacyTokenChanged() {
+  const paToken = tokenStore.getToken('power-automate');
+  if (paToken) {
+    debugLog('Sending legacy PA token, apiUrl:', paToken.apiUrl);
+    broadcastToAppTab({
+      type: 'token-changed',
+      token: paToken.token,
+      apiUrl: paToken.apiUrl,
+    });
+  } else {
+    debugLog('No PA token available to send');
+  }
+}
+
+function sendAllServiceTokens() {
+  const sentServices = new Set<ServiceType>();
+
+  for (const service of tokenStore.getAllServices()) {
+    const stored = tokenStore.getToken(service);
+    if (stored) {
+      debugLog(`Sending ${service} token, apiUrl:`, stored.apiUrl);
+      broadcastToAppTab({
+        type: 'service-token-changed',
+        service,
+        token: stored.token,
+        apiUrl: stored.apiUrl,
+        context: stored.context,
+      });
+      sentServices.add(service);
+    }
+  }
+
+  // Propagate graph token to dependent services that don't have their own token
+  const graphToken = tokenStore.getToken('graph');
+  if (graphToken) {
+    const graphDependents: ServiceType[] = ['sharepoint', 'intune', 'forms'];
+    for (const dep of graphDependents) {
+      if (!sentServices.has(dep)) {
+        broadcastToAppTab({
+          type: 'service-token-changed',
+          service: dep,
+          token: graphToken.token,
+          apiUrl: graphToken.apiUrl,
+          context: { ...graphToken.context, service: dep },
+        });
+      }
+    }
+  }
+}
+
+async function handleGetServiceData(
+  action: { type: 'get-service-data'; service: ServiceType; endpoint: string },
+  sendResponse: (response: any) => void
+) {
+  try {
+    await tokenStore.waitForLoad();
+
+    const url = action.endpoint.startsWith('http')
+      ? action.endpoint
+      : `https://graph.microsoft.com/v1.0${action.endpoint}`;
+
+    // For Graph API calls, prefer the graph token (correct audience) over service-specific tokens
+    const isGraphCall = url.startsWith('https://graph.microsoft.com');
+    let stored = tokenStore.getToken(action.service);
+    if (isGraphCall && action.service !== 'graph') {
+      const graphToken = tokenStore.getToken('graph');
+      if (graphToken) {
+        stored = graphToken;
+      }
+    }
+
+    if (!stored) {
+      sendResponse({ type: 'service-data-response', data: null, error: 'No valid token for ' + action.service });
+      return;
+    }
+
+    const headers: Record<string, string> = { Authorization: stored.token };
+
+    // SharePoint REST API needs an explicit Accept header for JSON responses
+    if (url.includes('.sharepoint.com') && url.includes('/_api/')) {
+      headers['Accept'] = 'application/json;odata=nometadata';
+    }
+
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => response.statusText);
+      sendResponse({ type: 'service-data-response', data: null, error: `HTTP ${response.status}: ${errorText}` });
+      return;
+    }
+
+    const data = await response.json();
+    sendResponse({ type: 'service-data-response', data });
+  } catch (error) {
+    sendResponse({
+      type: 'service-data-response',
+      data: null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// ─── Relay management ───────────────────────────────────────────────────────
+
+async function handleRelayToggle(enabled: boolean, sendResponse: (resp: any) => void) {
+  relayEnabled = enabled;
+  chrome.storage.local.set({ relayEnabled: enabled });
+
+  if (enabled) {
+    await connectRelay();
+    // Push all existing credentials to relay
+    for (const cred of tokenStore.exportCredentials()) {
+      sendCredentialToRelay(cred.service, cred.token, cred.apiUrl, cred.context);
+    }
+  } else {
+    disconnectRelay();
+  }
+
+  sendResponse({
+    type: 'relay-status',
+    connected: relayTransport !== 'none',
+    transport: relayTransport,
+  });
+}
+
+async function connectRelay() {
+  // Try native messaging first
+  const nativeConnected = await new Promise<boolean>((resolve) => {
+    try {
+      const port = chrome.runtime.connectNative('com.m365workbench.relay');
+      const timeout = setTimeout(() => {
+        // If we haven't gotten a disconnect after 500ms, assume it's working
+        nativePort = port;
+        relayTransport = 'native';
+        debugLog('Connected via native messaging');
+        resolve(true);
+      }, 500);
+
+      port.onDisconnect.addListener(() => {
+        clearTimeout(timeout);
+        debugLog('Native host disconnected:', chrome.runtime.lastError?.message);
+        nativePort = null;
+        resolve(false);
+      });
+
+      port.onMessage.addListener((msg: any) => {
+        debugLog('Native host message:', msg);
+      });
+    } catch {
+      debugLog('Native messaging not available');
+      resolve(false);
+    }
+  });
+
+  if (nativeConnected) return;
+
+  // Fall back to HTTP
+  debugLog('Trying HTTP relay...');
+  try {
+    const resp = await fetch('http://127.0.0.1:8321/api/status');
+    if (resp.ok) {
+      relayTransport = 'http';
+      debugLog('Connected via HTTP relay');
+      return;
+    }
+  } catch {
+    debugLog('HTTP relay not available');
+  }
+
+  relayTransport = 'none';
+}
+
+function disconnectRelay() {
+  if (nativePort) {
+    nativePort.disconnect();
+    nativePort = null;
+  }
+  relayTransport = 'none';
+}
+
+function sendCredentialToRelay(
+  service: ServiceType,
+  token: string,
+  apiUrl: string,
+  context: ServiceContext
+) {
+  if (!relayEnabled) return;
+
+  const payload = { service, token, apiUrl, context };
+
+  if (relayTransport === 'native' && nativePort) {
+    nativePort.postMessage({ type: 'credential-update', ...payload });
+  } else if (relayTransport === 'http') {
+    fetch('http://127.0.0.1:8321/api/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch((err) => debugError('Failed to send credentials to HTTP relay:', err));
+  }
+}
+
+// ─── Legacy helpers ─────────────────────────────────────────────────────────
+
+function broadcastToAppTab(action: Actions) {
+  if (legacyState.appTabId) {
+    chrome.tabs.sendMessage(legacyState.appTabId, action, () => {
+      if (chrome.runtime.lastError) {
+        debugError('Failed to send message to app tab:', chrome.runtime.lastError);
+      }
+    });
+  }
 }
 
 function showNotification(message: string) {
   chrome.notifications?.create({
     type: 'basic',
     iconUrl: 'icons/pa-tools-48.png',
-    title: 'Power Automate Tools',
-    message: message
+    title: 'M365 Workbench',
+    message,
   });
 }
 
 async function handleAIApiCall(action: any, sendResponse: (response: any) => void) {
   try {
-    debugLog('Making AI API call to:', action.url);
-    debugLog('Request headers:', action.headers);
-    debugLog('Request body preview:', action.body?.substring(0, 200) + '...');
-    
     const response = await fetch(action.url, {
       method: action.method,
       headers: action.headers,
-      body: action.body
+      body: action.body,
     });
-
-    debugLog('Response status:', response.status);
-    debugLog('Response headers:', Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       let errorMessage = `API error: ${response.status} ${response.statusText}`;
-      let errorDetails = '';
       try {
         const errorData = await response.json();
-        debugError('API error response:', errorData);
         errorMessage = errorData.error?.message || errorData.message || errorMessage;
-        errorDetails = JSON.stringify(errorData);
-      } catch (e) {
-        // If we can't parse the error, try to get text
-        try {
-          errorDetails = await response.text();
-          debugError('API error text:', errorDetails);
-        } catch (e2) {
-          debugError('Could not parse error response');
-        }
-      }
-      throw new Error(`${errorMessage}${errorDetails ? ` - Details: ${errorDetails}` : ''}`);
+      } catch { /* ignore parse error */ }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    debugLog('API response received successfully');
     sendResponse({ success: true, data });
   } catch (error) {
-    debugError('AI API call failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    debugError('Sending error response:', errorMessage);
-    sendResponse({ 
-      success: false, 
-      error: errorMessage
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
-}
-
-function sendTokenChanged() {
-  if (!state.token || !state.apiUrl) {
-    debugError('Cannot send token - missing token or apiUrl');
-    return;
-  }
-
-  if (isTokenExpired()) {
-    debugError('Token expired, not sending');
-    showNotification('Authentication token expired. Please refresh the Power Automate page.');
-    return;
-  }
-
-  debugLog('Sending token changed message');
-  sendMessageToTab({
-    type: "token-changed",
-    token: state.token!,
-    apiUrl: state.apiUrl!,
-  });
 }
 
 function refreshInitiator() {
-  if (state.initiatorTabId) {
-    debugLog('Refreshing initiator tab:', state.initiatorTabId);
-    chrome.tabs.reload(state.initiatorTabId, {}, () => {
+  if (legacyState.initiatorTabId) {
+    chrome.tabs.reload(legacyState.initiatorTabId, {}, () => {
       if (chrome.runtime.lastError) {
         debugError('Failed to refresh tab:', chrome.runtime.lastError);
-      } else {
-        debugLog('Tab refreshed successfully');
       }
     });
-  } else {
-    debugLog('No initiator tab to refresh');
-  }
-}
-
-function listenFlowApiRequests(
-  details: chrome.webRequest.WebRequestHeadersDetails
-) {
-  // Skip if this is from our own app tab
-  if (state.appTabId === details.tabId) {
-    return;
-  }
-
-  debugLog('Intercepted API request:', details.url);
-  
-  state.lastMatchedRequest = extractFlowDataFromUrl(details);
-
-  const authHeader = details.requestHeaders?.find(
-    (x) => x.name.toLowerCase() === "authorization"
-  );
-  
-  const token = authHeader?.value;
-
-  if (!token) {
-    debugLog('No authorization token found in request');
-    return;
-  }
-
-  if (state.token !== token) {
-    debugLog('New token detected, updating state');
-    state.token = token;
-
-    try {
-      const decodedToken = jwtDecode(token!) as any;
-      state.tokenExpires = new Date(decodedToken.exp * 1000);
-      debugLog('Token expires at:', state.tokenExpires);
-
-      const url = new URL(details.url);
-      state.apiUrl = `${url.protocol}//${url.hostname}/`;
-      debugLog('API URL set to:', state.apiUrl);
-
-      sendTokenChanged();
-    } catch (error) {
-      debugError('Failed to decode token:', error);
-      return;
-    }
-  }
-
-  if (state.lastMatchedRequest) {
-    debugLog('Flow data extracted:', state.lastMatchedRequest);
-    state.initiatorTabId = details.tabId;
-    chrome.action.enable();
-    debugLog('Extension action enabled');
-  } else {
-    debugLog('No flow data found in URL, trying tab URL');
-    tryExtractFlowDataFromTabUrl(details.tabId);
   }
 }
 
 function tryExtractFlowDataFromTabUrl(tabId: number) {
   chrome.tabs.get(tabId, (tab) => {
-    if (chrome.runtime.lastError) {
-      debugError('Failed to get tab:', chrome.runtime.lastError);
-      return;
-    }
-
-    debugLog('Checking tab URL for flow data:', tab.url);
-    state.lastMatchedRequest = extractFlowDataFromTabUrl(tab.url);
-
-    if (state.lastMatchedRequest) {
-      debugLog('Flow data extracted from tab URL:', state.lastMatchedRequest);
-      state.initiatorTabId = tabId;
+    if (chrome.runtime.lastError) return;
+    legacyState.lastMatchedRequest = extractFlowDataFromTabUrl(tab.url);
+    if (legacyState.lastMatchedRequest) {
+      legacyState.initiatorTabId = tabId;
       chrome.action.enable();
-      debugLog('Extension action enabled from tab URL');
-    } else {
-      debugLog('No flow data found in tab URL');
     }
   });
 }
 
-function sendMessageToTab(action: Actions) {
-  if (state.appTabId) {
-    debugLog('Sending message to app tab:', action.type);
-    chrome.tabs.sendMessage(state.appTabId!, action, (response) => {
-      if (chrome.runtime.lastError) {
-        debugError('Failed to send message to app tab:', chrome.runtime.lastError);
-      } else {
-        debugLog('Message sent successfully');
-      }
-    });
-  } else {
-    debugLog('No app tab to send message to');
-  }
-}
-
 function extractFlowDataFromTabUrl(url?: string) {
-  if (!url) {
-    debugLog('No URL provided for extraction');
-    return null;
-  }
+  if (!url) return null;
 
-  debugLog('Extracting flow data from tab URL:', url);
-
-  // Multiple patterns to handle different Power Automate URL formats
   const envPatterns = [
-    // New Power Automate URLs
-    /\/environments\/([a-zA-Z0-9\-]*)\//i,
-    // Legacy URLs
-    /environment\/([a-zA-Z0-9\-]*)\//i,
-    // Alternative patterns
-    /\/environment=([a-zA-Z0-9\-]*)/i,
-    /envid=([a-zA-Z0-9\-]*)/i,
-    // Query parameter patterns
-    /[?&]environmentId=([a-zA-Z0-9\-]*)/i,
-    /[?&]env=([a-zA-Z0-9\-]*)/i,
-    // URL encoded patterns
-    /environments%2F([a-zA-Z0-9\-]*)/i,
+    /\/environments\/([a-zA-Z0-9-]*)\//i,
+    /environment\/([a-zA-Z0-9-]*)\//i,
+    /[?&]environmentId=([a-zA-Z0-9-]*)/i,
+    /environments%2F([a-zA-Z0-9-]*)/i,
   ];
 
   let envResult: RegExpExecArray | null = null;
-  let matchedEnvPattern = '';
-  
-  for (let i = 0; i < envPatterns.length; i++) {
-    const pattern = envPatterns[i];
+  for (const pattern of envPatterns) {
     envResult = pattern.exec(url);
-    if (envResult) {
-      matchedEnvPattern = pattern.toString();
-      debugLog(`Environment ID found with pattern ${i + 1}:`, matchedEnvPattern, '→', envResult[1]);
-      break;
-    }
+    if (envResult) break;
   }
+  if (!envResult) return null;
 
-  if (!envResult) {
-    debugLog('No environment ID found in URL. Tried patterns:', envPatterns.map(p => p.toString()));
-    return null;
-  }
-
-  // Multiple flow ID patterns
   const flowPatterns = [
-    // Standard GUID format
-    /flows\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    // Shared flows format
-    /flows\/shared\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    // URL encoded format
-    /flows\/([0-9a-f]{8}%2D[0-9a-f]{4}%2D[0-9a-f]{4}%2D[0-9a-f]{4}%2D[0-9a-f]{12})/i,
-    /flows\/shared\/([0-9a-f]{8}%2D[0-9a-f]{4}%2D[0-9a-f]{4}%2D[0-9a-f]{4}%2D[0-9a-f]{12})/i,
-    // Alternative patterns
-    /flow\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    /flow\/shared\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    /flowid=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    // Query parameter patterns
+    /flows\/(?:shared\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
+    /flow\/(?:shared\/)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
     /[?&]flowId=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    /[?&]id=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    // URL encoded patterns
-    /flows%2F([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    /flows%2Fshared%2F([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    // Hash-based patterns (for SPAs)
-    /#.*flows\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    /#.*flows\/shared\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
+    /flows%2F(?:shared%2F)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
   ];
 
   let flowResult: RegExpExecArray | null = null;
-  let matchedFlowPattern = '';
-  
-  for (let i = 0; i < flowPatterns.length; i++) {
-    const pattern = flowPatterns[i];
+  for (const pattern of flowPatterns) {
     flowResult = pattern.exec(url);
     if (flowResult) {
-      matchedFlowPattern = pattern.toString();
-      // Decode URL encoded GUIDs
       flowResult[1] = decodeURIComponent(flowResult[1]);
-      debugLog(`Flow ID found with pattern ${i + 1}:`, matchedFlowPattern, '→', flowResult[1]);
       break;
     }
   }
+  if (!flowResult) return null;
 
-  if (!flowResult) {
-    debugLog('No flow ID found in URL. Tried patterns:', flowPatterns.map(p => p.toString()));
-    return null;
-  }
-
-  const result = {
-    envId: envResult[1],
-    flowId: flowResult[1],
-  };
-
-  debugLog('Successfully extracted flow data:', result);
-  return result;
+  return { envId: envResult[1], flowId: flowResult[1] };
 }
 
-function extractFlowDataFromUrl(
-  details: chrome.webRequest.WebRequestHeadersDetails
-) {
+function extractFlowDataFromUrl(details: chrome.webRequest.WebRequestHeadersDetails) {
   const requestUrl = details.url;
-  if (!requestUrl) {
-    return null;
-  }
+  if (!requestUrl) return null;
 
-  debugLog('Extracting flow data from API URL:', requestUrl);
-
-  // Multiple patterns for different API endpoints
   const patterns = [
-    // Standard pattern
     /\/providers\/Microsoft\.ProcessSimple\/environments\/(.*)\/flows\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-    // Alternative pattern
     /\/environments\/(.*)\/flows\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
   ];
 
   for (const pattern of patterns) {
     const result = pattern.exec(requestUrl);
     if (result) {
-      const flowData = {
-        envId: result[1],
-        flowId: result[2],
-      };
-      debugLog('Extracted flow data from API URL:', flowData);
-      return flowData;
+      return { envId: result[1], flowId: result[2] };
     }
   }
-
-  debugLog('No flow data found in API URL');
   return null;
 }

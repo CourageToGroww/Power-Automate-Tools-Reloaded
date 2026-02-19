@@ -2,7 +2,6 @@ import { initializeIcons } from '@fluentui/react/lib/Icons';
 import { Stack } from '@fluentui/react/lib/Stack';
 import { mergeStyles } from '@fluentui/react/lib/Styling';
 import { MessageBar, MessageBarType } from '@fluentui/react/lib/MessageBar';
-import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
 import { loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import { createRoot } from 'react-dom/client';
@@ -12,10 +11,17 @@ import {
   ApiProviderContext,
   ApiProviderContextRoot
 } from './common/providers/ApiProvider';
+import { MultiServiceApiProvider, useMultiServiceApi } from './common/providers/MultiServiceApiProvider';
+import { DataSourceProvider, useDataSources } from './contexts/DataSourceContext';
+import { DataSourceSidebar } from './components/DataSourceSidebar';
 import { FlowEditorPage } from './features/flow-editor/FlowEditorPage';
 import { PreviousRunsPage } from './features/previous-runs/PreviousRunsPage';
+import { SharePointPage } from './features/sharepoint/SharePointPage';
+import { IntunePage } from './features/intune/IntunePage';
+import { FormsPage } from './features/forms/FormsPage';
 import { useEffect, useState } from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { DataSource } from './common/types/dataSource';
 import './styles/globals.css';
 
 initMonaco();
@@ -38,110 +44,150 @@ createRoot(document.getElementById('app')!).render(
 
 function App() {
   const apiProviderRoot = ApiProviderContextRoot();
-  const [isWaitingForAuth, setIsWaitingForAuth] = useState(true);
+
+  return (
+    <HashRouter>
+      <MultiServiceApiProvider>
+        <ApiProviderContext.Provider value={apiProviderRoot}>
+          <DataSourceProvider>
+            <AppContent legacyApi={apiProviderRoot} />
+          </DataSourceProvider>
+        </ApiProviderContext.Provider>
+      </MultiServiceApiProvider>
+    </HashRouter>
+  );
+}
+
+function AppContent({ legacyApi }: { legacyApi: { isApiReady: boolean } }) {
+  const multiServiceApi = useMultiServiceApi();
+  const { sources } = useDataSources();
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Get URL parameters to validate we have the required flow info
+  // Any service ready (not just PA)
+  const isAnyReady = legacyApi.isApiReady || multiServiceApi.activeServices.length > 0;
+
+  const hasSources = sources.length > 0;
+
+  // Check if URL has PA params (legacy mode - always skip auth gate)
   const urlParams = new URLSearchParams(window.location.search);
-  const envId = urlParams.get('envId');
-  const flowId = urlParams.get('flowId');
+  const hasUrlParams = Boolean(urlParams.get('envId') && urlParams.get('flowId'));
 
+  // Skip the global auth gate if we have data sources OR legacy URL params.
+  // Each feature page handles its own loading/auth state.
+  const skipAuthGate = hasSources || hasUrlParams;
+
+  // Backward compat: if URL has envId+flowId params, auto-create a DataSource
+  useBackwardCompatSource();
+
+  // Only show auth error if we have NO other way to display content
   useEffect(() => {
-    // Check if we have the required parameters
-    if (!envId || !flowId) {
-      setAuthError('Invalid URL parameters. Please open the extension from a Power Automate flow page.');
-      setIsWaitingForAuth(false);
-      return;
-    }
+    if (skipAuthGate || isAnyReady) return;
 
-    // Wait for API to be ready or timeout after 30 seconds
     const timeout = setTimeout(() => {
-      if (!apiProviderRoot.isApiReady) {
-        setAuthError('Authentication timeout. Please refresh the Power Automate page and try again.');
-        setIsWaitingForAuth(false);
+      if (!isAnyReady) {
+        setAuthError(
+          'Authentication timeout. Please refresh the service page and try again.'
+        );
       }
     }, 30000);
 
-    if (apiProviderRoot.isApiReady) {
-      setIsWaitingForAuth(false);
+    if (isAnyReady) {
       setAuthError(null);
       clearTimeout(timeout);
     }
 
     return () => clearTimeout(timeout);
-  }, [apiProviderRoot.isApiReady, envId, flowId]);
+  }, [isAnyReady, skipAuthGate]);
 
   const handleRefresh = () => {
     window.location.reload();
   };
 
-  return (
-    <HashRouter>
-      <ApiProviderContext.Provider value={apiProviderRoot}>
-        <Stack
-          styles={{
-            root: {
-              height: '100%',
-            },
-          }}
-        >
-          <NavBar />
-          
-          {authError && (
-            <MessageBar
-              messageBarType={MessageBarType.error}
-              isMultiline={false}
-              onDismiss={() => setAuthError(null)}
-              actions={
-                <div>
-                  <button onClick={handleRefresh}>Refresh</button>
-                </div>
-              }
-            >
-              {authError}
-            </MessageBar>
-          )}
+  // Show main layout when: we have sources, url params, or auth is ready
+  const showMainLayout = skipAuthGate || isAnyReady;
 
-          {isWaitingForAuth && !authError ? (
-            <Stack
-              horizontalAlign="center"
-              verticalAlign="center"
-              styles={{ root: { flex: 1, padding: 20 } }}
-            >
-              <Spinner size={SpinnerSize.large} />
-              <div style={{ marginTop: 16, textAlign: 'center' }}>
-                <h3>Connecting to Power Automate...</h3>
-                <p>Please make sure you have an active Power Automate session.</p>
-                <p>If this takes too long, try refreshing the Power Automate page first.</p>
-              </div>
-            </Stack>
-          ) : apiProviderRoot.isApiReady && !authError ? (
-            <Routes>
-              <Route path="/">
-                <Route index element={<FlowEditorPage />} />
-                <Route path="failures" element={<PreviousRunsPage />} />
-              </Route>
-            </Routes>
-          ) : !authError ? (
-            <Stack
-              horizontalAlign="center"
-              verticalAlign="center"
-              styles={{ root: { flex: 1, padding: 20 } }}
-            >
-              <h2>Please refresh the flow's details/edit tab first.</h2>
-              <p>To use this extension:</p>
-              <ol>
-                <li>Go to your Power Automate flow</li>
-                <li>Click on the flow to open it</li>
-                <li>Navigate to the flow details or edit page</li>
-                <li>Click the extension icon again</li>
-              </ol>
-            </Stack>
-          ) : null}
+  return (
+    <div className="h-full flex flex-col">
+      <NavBar />
+
+      {authError && (
+        <MessageBar
+          messageBarType={MessageBarType.error}
+          isMultiline={false}
+          onDismiss={() => setAuthError(null)}
+          actions={
+            <div>
+              <button onClick={handleRefresh}>Refresh</button>
+            </div>
+          }
+        >
+          {authError}
+        </MessageBar>
+      )}
+
+      {showMainLayout ? (
+        <div className="flex-1 flex overflow-hidden">
+          <DataSourceSidebar />
+          <main className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 flex flex-col min-h-0">
+              <Routes>
+                <Route path="/">
+                  <Route index element={<FlowEditorPage />} />
+                  <Route path="failures" element={<div className="flex-1 overflow-auto"><PreviousRunsPage /></div>} />
+                  <Route path="sharepoint" element={<div className="flex-1 overflow-auto"><SharePointPage /></div>} />
+                  <Route path="intune" element={<div className="flex-1 overflow-auto"><IntunePage /></div>} />
+                  <Route path="forms" element={<div className="flex-1 overflow-auto"><FormsPage /></div>} />
+                </Route>
+              </Routes>
+            </div>
+          </main>
+        </div>
+      ) : !authError ? (
+        <Stack
+          horizontalAlign="center"
+          verticalAlign="center"
+          styles={{ root: { flex: 1, padding: 20 } }}
+        >
+          <h2>Please refresh the M365 service page first.</h2>
+          <p>To use the M365 Workbench:</p>
+          <ol>
+            <li>Go to a Microsoft 365 service (SharePoint, Power Automate, Intune, Forms)</li>
+            <li>Make sure you are signed in</li>
+            <li>Click the extension icon</li>
+          </ol>
         </Stack>
-      </ApiProviderContext.Provider>
-    </HashRouter>
+      ) : null}
+    </div>
   );
+}
+
+/**
+ * Backward compat: if URL has envId+flowId params (old PA mode),
+ * auto-create a DataSource so the sidebar + context-based navigation work.
+ */
+function useBackwardCompatSource() {
+  const { addSource, sources } = useDataSources();
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const envId = urlParams.get('envId');
+    const flowId = urlParams.get('flowId');
+
+    if (!envId || !flowId) return;
+    // Only create once
+    if (sources.some((s) => s.serviceType === 'power-automate' && s.context.flowId === flowId)) return;
+
+    const source: DataSource = {
+      id: crypto.randomUUID(),
+      serviceType: 'power-automate',
+      context: { envId, flowId },
+      label: `Flow ${flowId.substring(0, 8)}`,
+      sourceUrl: window.location.href,
+      capturedAt: Date.now(),
+    };
+
+    addSource(source);
+  }, []); // Run once on mount
 }
 
 function initMonaco() {

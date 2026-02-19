@@ -5,6 +5,7 @@ import {
   IApiProvider,
   useApiProviderContext,
 } from "../../common/providers/ApiProvider";
+import { useDataSources } from "../../contexts/DataSourceContext";
 import { FlowError } from "./types";
 
 const DEBUG = true;
@@ -33,10 +34,14 @@ export const useFlowEditor = () => {
   }>({ errors: [], warnings: [] });
 
   const api = useApiProviderContext();
+  const { activeSource } = useDataSources();
   const query = new URLSearchParams(location.search);
 
-  const envId = query.get("envId");
-  const flowId = query.get("flowId");
+  // Prefer activeSource context (DataSource system) over URL params (legacy)
+  const envId = (activeSource?.serviceType === 'power-automate'
+    ? activeSource.context.envId : null) ?? query.get("envId");
+  const flowId = (activeSource?.serviceType === 'power-automate'
+    ? activeSource.context.flowId : null) ?? query.get("flowId");
 
   debugLog('Flow editor initialized with envId:', envId, 'flowId:', flowId);
 
@@ -57,16 +62,12 @@ export const useFlowEditor = () => {
     [messageBar]
   );
 
-  // Validate required parameters
+  // Log parameters (envId/flowId may arrive later via DataSource)
   useEffect(() => {
     if (!envId || !flowId) {
-      debugError('Missing required parameters - envId:', envId, 'flowId:', flowId);
-      addMessage(
-        'Invalid URL parameters. Please open the extension from a Power Automate flow page.',
-        MessageBarType.error
-      );
+      debugLog('Waiting for flow parameters - envId:', envId, 'flowId:', flowId);
     }
-  }, [envId, flowId, addMessage]);
+  }, [envId, flowId]);
 
   return {
     isLoading,

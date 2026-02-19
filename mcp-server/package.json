@@ -1,0 +1,26 @@
+{
+  "name": "m365-workbench-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for M365 Workbench - bridges browser auth to Claude Code",
+  "main": "dist/index.js",
+  "bin": {
+    "m365-mcp": "dist/index.js",
+    "m365-native-host": "dist/native-host.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "native-host": "node dist/native-host.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "node-fetch": "^2.7.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/node-fetch": "^2.6.11",
+    "typescript": "^5.3.0"
+  }
+}
