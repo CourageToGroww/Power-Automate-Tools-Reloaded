@@ -118,9 +118,14 @@ export const DataSourceProvider: React.FC<{ children: React.ReactNode }> = ({
     return sources.find((s) => s.id === activeSourceId) ?? null;
   }, [sources, activeSourceId]);
 
-  // Navigate when active source changes
+  // Navigate when active source changes (only on actual source switch, not re-renders).
+  // Track previous activeSourceId to avoid re-navigating on every render,
+  // which would override explicit user navigation (e.g., clicking "Previous Runs").
+  const prevActiveSourceIdRef = React.useRef<string | null>(null);
   useEffect(() => {
     if (!activeSource) return;
+    if (activeSource.id === prevActiveSourceIdRef.current) return;
+    prevActiveSourceIdRef.current = activeSource.id;
     const route = SERVICE_ROUTES[activeSource.serviceType];
     if (route) {
       navigate(route);
