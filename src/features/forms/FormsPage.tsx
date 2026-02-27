@@ -1,26 +1,23 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useServiceApi } from '../../common/providers/MultiServiceApiProvider';
-import { useForms, useFormDetail, useFormResponses, FormInfo } from './useForms';
-import { ExportActions } from '../../common/components/ExportActions';
+import { useForms, FormInfo } from './useForms';
 import { useDataSources } from '../../contexts/DataSourceContext';
+import { ExportActions } from '../../common/components/ExportActions';
+import { ServiceEditor } from '../../common/components/ServiceEditor';
+import { FORMS_TABS } from './formsEditorConfig';
+import type { ServiceContext } from '../../common/types/serviceEditor';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { ScrollArea } from '../../components/ui/scroll-area';
-import { JsonTreeViewer } from '../../components/ui/json-tree-viewer';
 import { cn } from '../../lib/utils';
 import {
   FileText,
   RefreshCw,
   AlertCircle,
   ChevronRight,
-  Download,
   Unplug,
   ArrowLeft,
-  ClipboardList,
-  MessageSquare,
-  Calendar,
-  User,
 } from 'lucide-react';
 
 function formatDate(dateString: string | undefined): string {
@@ -78,283 +75,46 @@ const LoadingSpinner: React.FC<{ label?: string }> = ({ label }) => (
   </div>
 );
 
-interface FormDetailViewProps {
-  formId: string;
-  formTitle: string;
-  onBack: () => void;
-}
-
-const FormDetailView: React.FC<FormDetailViewProps> = ({ formId, formTitle, onBack }) => {
-  const { formDetail, isLoading: isLoadingDetail, error: detailError, refetch: refetchDetail } = useFormDetail(formId);
-  const { responses, isLoading: isLoadingResponses, error: responsesError, refetch: refetchResponses } = useFormResponses(formId);
-  const [showResponses, setShowResponses] = useState(true);
-
-  const handleExportResponses = useCallback(() => {
-    if (responses.length === 0) return;
-
-    const exportData = {
-      formId,
-      formTitle,
-      exportedAt: new Date().toISOString(),
-      totalResponses: responses.length,
-      responses: responses.map(r => ({
-        id: r.id,
-        submitDate: r.submitDate,
-        respondent: r.respondent,
-        answers: r.answers,
-      })),
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    // Sanitize the title for use in a filename
-    const safeTitle = formTitle.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
-    link.download = `${safeTitle}_responses.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [responses, formId, formTitle]);
-
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0">
-          <ArrowLeft className="w-4 h-4 mr-1" />
-          Back
-        </Button>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold truncate">{formTitle}</h2>
-          {formDetail?.form.description && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">
-              {formDetail.form.description}
-            </p>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refetchDetail}
-          disabled={isLoadingDetail}
-          className="shrink-0"
-        >
-          <RefreshCw className={cn('w-3.5 h-3.5 mr-1', isLoadingDetail && 'animate-spin')} />
-          <span className="hidden sm:inline">Refresh</span>
-        </Button>
-      </div>
-
-      {detailError && <ErrorMessage message={detailError} onRetry={refetchDetail} />}
-
-      {/* Form structure / questions */}
-      {isLoadingDetail ? (
-        <LoadingSpinner label="Loading form structure..." />
-      ) : formDetail && formDetail.questions.length > 0 ? (
-        <Card>
-          <CardHeader className="py-3 px-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-muted-foreground" />
-                Questions
-              </CardTitle>
-              <Badge variant="secondary">{formDetail.questions.length}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0 px-4 pb-4">
-            <div className="space-y-2">
-              {formDetail.questions
-                .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
-                .map((question, index) => (
-                  <Card key={question.id} className="bg-muted/20">
-                    <CardContent className="p-3">
-                      <div className="flex items-start gap-3">
-                        <span className="text-xs text-muted-foreground font-mono shrink-0 mt-0.5">
-                          Q{index + 1}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-medium">{question.displayName}</p>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {question.questionType && (
-                                <Badge variant="outline" className="text-xs">
-                                  {question.questionType}
-                                </Badge>
-                              )}
-                              {question.isRequired && (
-                                <Badge variant="default" className="text-xs">
-                                  Required
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          {question.choices && question.choices.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                              <p className="text-xs text-muted-foreground">Choices:</p>
-                              <div className="flex flex-wrap gap-1">
-                                {question.choices.map((choice, ci) => (
-                                  <Badge key={ci} variant="secondary" className="text-xs">
-                                    {choice.displayName}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {question.allowMultipleAnswers && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Multiple answers allowed
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          </CardContent>
-        </Card>
-      ) : formDetail && formDetail.questions.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-8">
-            <ClipboardList className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">
-              No question structure available. The form details may be limited by API permissions.
-            </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Responses section */}
-      <Card>
-        <CardHeader
-          className="cursor-pointer py-3 px-4"
-          onClick={() => setShowResponses(!showResponses)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-muted-foreground" />
-              <CardTitle className="text-sm">Responses</CardTitle>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{responses.length}</Badge>
-              {responses.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleExportResponses();
-                  }}
-                  className="h-7 px-2 text-xs"
-                >
-                  <Download className="w-3.5 h-3.5 mr-1" />
-                  Export
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  refetchResponses();
-                }}
-                disabled={isLoadingResponses}
-              >
-                <RefreshCw className={cn('w-3.5 h-3.5', isLoadingResponses && 'animate-spin')} />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        {showResponses && (
-          <CardContent className="pt-0 px-4 pb-4">
-            {responsesError && <ErrorMessage message={responsesError} onRetry={refetchResponses} />}
-            {isLoadingResponses ? (
-              <LoadingSpinner label="Loading responses..." />
-            ) : responses.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">
-                No responses found for this form.
-              </p>
-            ) : (
-              <div className="overflow-x-auto -mx-4 px-4">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground">#</th>
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground hidden sm:table-cell">Respondent</th>
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground hidden md:table-cell">Submitted</th>
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Answers</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {responses.map((response, index) => (
-                      <tr key={response.id} className="border-b last:border-0">
-                        <td className="py-2.5 pr-4 text-muted-foreground text-xs">
-                          {index + 1}
-                        </td>
-                        <td className="py-2.5 pr-4 hidden sm:table-cell">
-                          <div className="flex items-center gap-1.5">
-                            <User className="w-3 h-3 text-muted-foreground" />
-                            <span className="text-sm truncate max-w-[150px]">
-                              {response.respondent || 'Anonymous'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 pr-4 text-xs text-muted-foreground hidden md:table-cell">
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="w-3 h-3" />
-                            {formatDate(response.submitDate)}
-                          </div>
-                        </td>
-                        <td className="py-2.5 pr-4">
-                          <JsonTreeViewer
-                            data={response.answers}
-                            defaultExpanded={0}
-                            className="text-xs border-0 shadow-none"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
-    </div>
-  );
-};
-
 export const FormsPage: React.FC = () => {
   const client = useServiceApi('forms');
   const { forms, isLoading, error, refetch, isReady } = useForms();
   const { activeSource } = useDataSources();
   const [selectedForm, setSelectedForm] = useState<FormInfo | null>(null);
 
+  const editorContext = useMemo<ServiceContext>(() => ({
+    client,
+    formId: selectedForm?.id || '',
+  }), [client, selectedForm?.id]);
+
   if (!client.isReady && !isReady) {
     return <NotConnected />;
   }
 
-  // Form detail view
+  // Form detail view with ServiceEditor
   if (selectedForm) {
     return (
       <div className="h-full flex flex-col bg-background">
-        <div className="p-4 md:p-6 border-b">
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight">Forms</h1>
-          <p className="text-muted-foreground text-sm mt-1">{selectedForm.title}</p>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-4 md:p-6">
-            <FormDetailView
-              formId={selectedForm.id}
-              formTitle={selectedForm.title}
-              onBack={() => setSelectedForm(null)}
-            />
+        <div className="px-4 py-3 border-b flex items-center gap-3 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedForm(null)}
+            className="shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Back
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold truncate">{selectedForm.title}</h1>
+            <p className="text-xs text-muted-foreground">Forms Editor</p>
           </div>
-        </ScrollArea>
+        </div>
+        <div className="flex-1 min-h-0">
+          <ServiceEditor
+            tabs={FORMS_TABS}
+            context={editorContext}
+          />
+        </div>
       </div>
     );
   }
@@ -367,7 +127,7 @@ export const FormsPage: React.FC = () => {
           <div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">Forms</h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Browse forms and view responses
+              Browse forms, edit structure, and view responses
             </p>
           </div>
           <Button
