@@ -4,3 +4,5 @@ dist
 *.crx
 .DS_Store
 .serena/
+.worktrees/
+docs/plans/
