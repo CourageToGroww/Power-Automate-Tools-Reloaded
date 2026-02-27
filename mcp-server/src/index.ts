@@ -13,6 +13,7 @@ import { getIntuneToolDefs, handleIntuneTool } from './tools/intune';
 import { getFormsToolDefs, handleFormsTool } from './tools/forms';
 import { getGraphToolDefs, handleGraphTool } from './tools/graph';
 import { getStatusToolDefs, handleStatusTool } from './tools/status';
+import { getWorkspaceToolDefs, handleWorkspaceTool } from './tools/workspace';
 
 const server = new Server(
   { name: 'm365-workbench', version: '1.0.0' },
@@ -28,6 +29,7 @@ function getAllToolDefs() {
     ...getFormsToolDefs(),
     ...getGraphToolDefs(),
     ...getStatusToolDefs(),
+    ...getWorkspaceToolDefs(),
   ];
 }
 
@@ -39,6 +41,7 @@ const handlers: Array<{ prefix: string; handler: (name: string, args: any) => Pr
   { prefix: 'forms_', handler: handleFormsTool },
   { prefix: 'graph_', handler: handleGraphTool },
   { prefix: 'get_auth_', handler: handleStatusTool },
+  { prefix: 'ws_', handler: handleWorkspaceTool },
 ];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({

@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import { useServiceApi } from '../../common/providers/MultiServiceApiProvider';
 import { useForms, useFormDetail, useFormResponses, FormInfo } from './useForms';
+import { ExportActions } from '../../common/components/ExportActions';
+import { useDataSources } from '../../contexts/DataSourceContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -329,6 +331,7 @@ const FormDetailView: React.FC<FormDetailViewProps> = ({ formId, formTitle, onBa
 export const FormsPage: React.FC = () => {
   const client = useServiceApi('forms');
   const { forms, isLoading, error, refetch, isReady } = useForms();
+  const { activeSource } = useDataSources();
   const [selectedForm, setSelectedForm] = useState<FormInfo | null>(null);
 
   if (!client.isReady && !isReady) {
@@ -381,6 +384,16 @@ export const FormsPage: React.FC = () => {
 
       <ScrollArea className="flex-1">
         <div className="p-4 md:p-6 space-y-4">
+          {/* Export Actions */}
+          <ExportActions
+            serviceType="forms"
+            context={{
+              formId: activeSource?.context?.formId || '',
+              tenantId: activeSource?.context?.tenantId || '',
+              userId: activeSource?.context?.userId || '',
+            }}
+          />
+
           {error && <ErrorMessage message={error} onRetry={refetch} />}
 
           {isLoading ? (

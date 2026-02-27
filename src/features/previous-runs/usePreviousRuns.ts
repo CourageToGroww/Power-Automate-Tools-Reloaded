@@ -19,6 +19,12 @@ function debugError(...args: any[]) {
   }
 }
 
+export type LoadStatus =
+  | { state: 'ready' }
+  | { state: 'no-source'; message: string }
+  | { state: 'waiting-auth'; message: string }
+  | { state: 'error'; message: string };
+
 export const usePreviousRuns = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [failures, setFailures] = useState<FlowFailure[]>([]);
@@ -38,7 +44,18 @@ export const usePreviousRuns = () => {
   const flowId = (activeSource?.serviceType === 'power-automate'
     ? activeSource.context.flowId : null) ?? query.get("flowId");
 
-  debugLog('Flow failures initialized with envId:', envId, 'flowId:', flowId);
+  // Determine load status for UI feedback
+  const loadStatus: LoadStatus = (() => {
+    if (!envId || !flowId) {
+      return { state: 'no-source', message: 'Select a Power Automate flow to view runs' } as const;
+    }
+    if (!api.isApiReady) {
+      return { state: 'waiting-auth', message: 'Waiting for Power Automate authentication...' } as const;
+    }
+    return { state: 'ready' } as const;
+  })();
+
+  debugLog('Flow failures initialized with envId:', envId, 'flowId:', flowId, 'loadStatus:', loadStatus.state);
 
   const messageBar = useMessageBar();
 
@@ -301,6 +318,7 @@ export const usePreviousRuns = () => {
     selectedRunDetails,
     showAllRuns,
     debugMode,
+    loadStatus,
     selectFailure,
     refreshFailures,
     toggleShowAllRuns,

@@ -8,6 +8,8 @@ module.exports = {
     entry: {
         background: path.resolve(__dirname, "src", "background.ts"),
         app: path.resolve(__dirname, "src", "app.tsx"),
+        "content-script": path.resolve(__dirname, "src", "content-script.ts"),
+        "content-script-main": path.resolve(__dirname, "src", "content-script-main.ts"),
     },
     output: {
         path: path.join(__dirname, "dist"),

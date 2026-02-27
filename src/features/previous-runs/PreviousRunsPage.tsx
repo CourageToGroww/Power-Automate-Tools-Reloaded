@@ -16,6 +16,7 @@ export const PreviousRunsPage: React.FC = () => {
     isLoadingDetails,
     failures: runs,
     selectedRunDetails,
+    loadStatus,
     selectFailure: selectRun,
     refreshFailures: refreshRuns,
     messages,
@@ -110,7 +111,20 @@ export const PreviousRunsPage: React.FC = () => {
       {/* Run List */}
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-4">
-          {isLoading ? (
+          {loadStatus.state !== 'ready' ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center h-64">
+                {loadStatus.state === 'waiting-auth' ? (
+                  <RefreshCw className="w-12 h-12 text-muted-foreground mb-4 animate-spin" />
+                ) : (
+                  <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
+                )}
+                <p className="text-lg font-medium text-muted-foreground">
+                  {loadStatus.message}
+                </p>
+              </CardContent>
+            </Card>
+          ) : isLoading ? (
             <div className="flex items-center justify-center h-64">
               <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>

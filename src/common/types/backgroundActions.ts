@@ -76,6 +76,60 @@ export interface CaptureSource {
   source: DataSource;
 }
 
+export interface FlowDefinitionCaptured {
+  type: 'flow-definition-captured';
+  envId: string;
+  flowId: string;
+  flowData: any;
+}
+
+export interface GetCachedFlow {
+  type: 'get-cached-flow';
+  envId: string;
+  flowId: string;
+}
+
+export interface CachedFlowResponse {
+  type: 'cached-flow-response';
+  flowData: any | null;
+  envId?: string;
+  flowId?: string;
+}
+
+export interface GetAllCachedFlows {
+  type: 'get-all-cached-flows';
+}
+
+export interface AllCachedFlowsResponse {
+  type: 'all-cached-flows-response';
+  flows: Array<{ envId: string; flowId: string; displayName: string; capturedAt: number }>;
+}
+
+// --- Export actions ---
+
+export interface ExecuteExportAction {
+  type: 'execute-export';
+  actionId: string;
+  context: Record<string, string>;
+}
+
+export interface ExportActionResult {
+  type: 'export-action-result';
+  actionId: string;
+  data: any;
+  error?: string;
+}
+
+export interface ExportAllForWorkspace {
+  type: 'export-all-workspace';
+  sourceContexts: Array<{ serviceType: string; context: Record<string, string> }>;
+}
+
+export interface ExportAllResult {
+  type: 'export-all-result';
+  results: Array<{ actionId: string; data: any; error?: string }>;
+}
+
 export type Actions =
   | RefreshInitiator
   | TokenChanged
@@ -89,4 +143,13 @@ export type Actions =
   | ServiceStatusResponse
   | RelayToggle
   | RelayStatus
-  | CaptureSource;
+  | CaptureSource
+  | FlowDefinitionCaptured
+  | GetCachedFlow
+  | CachedFlowResponse
+  | GetAllCachedFlows
+  | AllCachedFlowsResponse
+  | ExecuteExportAction
+  | ExportActionResult
+  | ExportAllForWorkspace
+  | ExportAllResult;

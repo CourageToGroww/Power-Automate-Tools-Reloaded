@@ -29,6 +29,12 @@ function sendJSON(res: http.ServerResponse, status: number, data: any): void {
   res.end(JSON.stringify(data));
 }
 
+let workspaceData: any = null;
+
+export function getWorkspaceData(): any {
+  return workspaceData;
+}
+
 export function startRelay(port: number = 8321): http.Server {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
@@ -45,6 +51,15 @@ export function startRelay(port: number = 8321): http.Server {
     }
 
     try {
+      if (req.method === 'GET' && url.pathname === '/api/health') {
+        sendJSON(res, 200, {
+          ok: true,
+          uptime: process.uptime(),
+          services: Object.keys(authStore.getStatus()),
+        });
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/credentials') {
         const data: CredentialUpdate = await parseBody(req);
 
@@ -74,6 +89,38 @@ export function startRelay(port: number = 8321): http.Server {
 
       } else if (req.method === 'GET' && url.pathname === '/api/status') {
         sendJSON(res, 200, { ok: true, services: authStore.getStatus() });
+
+      } else if (req.method === 'POST' && url.pathname === '/api/workspace') {
+        const body = await parseBody(req);
+        workspaceData = body;
+        sendJSON(res, 200, { ok: true, message: 'Workspace data received' });
+
+      } else if (req.method === 'GET' && url.pathname === '/api/workspace') {
+        if (!workspaceData) {
+          sendJSON(res, 404, { error: 'No workspace loaded' });
+          return;
+        }
+        sendJSON(res, 200, workspaceData);
+
+      } else if (req.method === 'GET' && url.pathname === '/api/workspace/sources') {
+        const sources = workspaceData?.exportedData?.map((s: any) => ({
+          id: s.id,
+          actionId: s.actionId,
+          serviceType: s.serviceType,
+          label: s.label,
+          capturedAt: s.capturedAt,
+          itemCount: Array.isArray(s.data) ? s.data.length : 1,
+        })) || [];
+        sendJSON(res, 200, { sources });
+
+      } else if (req.method === 'GET' && url.pathname.startsWith('/api/workspace/source/')) {
+        const sourceId = url.pathname.split('/').pop();
+        const source = workspaceData?.exportedData?.find((s: any) => s.id === sourceId);
+        if (!source) {
+          sendJSON(res, 404, { error: 'Source not found' });
+          return;
+        }
+        sendJSON(res, 200, source);
 
       } else {
         sendJSON(res, 404, { error: 'Not found' });

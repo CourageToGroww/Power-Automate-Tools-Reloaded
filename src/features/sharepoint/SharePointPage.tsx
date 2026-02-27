@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useServiceApi } from '../../common/providers/MultiServiceApiProvider';
 import { useSites, useLists, useListItems } from './useSharePoint';
 import { useDataSources } from '../../contexts/DataSourceContext';
+import { ExportActions } from '../../common/components/ExportActions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -374,6 +375,15 @@ export const SharePointPage: React.FC = () => {
 
       <ScrollArea className="flex-1">
         <div className="p-4 md:p-6 space-y-6">
+          {/* Export Actions */}
+          <ExportActions
+            serviceType="sharepoint"
+            context={{
+              siteUrl: spContext?.baseUrl || activeSource?.context?.siteUrl || '',
+              listTitle: activeSource?.context?.listTitle || '',
+            }}
+          />
+
           {/* Sites error */}
           {sitesError && <ErrorMessage message={sitesError} onRetry={refetchSites} />}
 

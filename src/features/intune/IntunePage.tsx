@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useServiceApi } from '../../common/providers/MultiServiceApiProvider';
 import { useDevices, useDevice, usePolicies, ManagedDevice } from './useIntune';
+import { ExportActions } from '../../common/components/ExportActions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -310,6 +311,9 @@ export const IntunePage: React.FC = () => {
 
       <ScrollArea className="flex-1">
         <div className="p-4 md:p-6 space-y-6">
+          {/* Export Actions */}
+          <ExportActions serviceType="intune" context={{}} />
+
           {/* Devices Table */}
           <Card>
             <CardHeader className="py-3 px-4">

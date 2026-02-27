@@ -12,11 +12,13 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { cn } from '../../lib/utils';
-import { Eye, FileJson, Copy, ChevronDown, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
+import { Eye, FileJson, Copy, ChevronDown, ChevronRight, Maximize2, Minimize2, Download } from 'lucide-react';
 import { LoaderModal } from '../../common/components/LoaderModal';
 import { Messages } from '../../common/components/Messages';
+import { ExportActions } from '../../common/components/ExportActions';
 import { FlowValidationResult } from './FlowValidationResult';
 import { useFlowEditor } from './useFlowEditor';
+import { useDataSources } from '../../contexts/DataSourceContext';
 
 const editorContainerClassName = mergeStyles({
   flex: 1,
@@ -515,6 +517,8 @@ export const FlowEditorPage: React.FC = () => {
     null as any
   );
   const [viewMode, setViewMode] = useState<'full' | 'actions'>('full');
+  const [showExport, setShowExport] = useState(false);
+  const { activeSource } = useDataSources();
 
   // Apply dark mode styles to FluentUI command bar
   useEffect(() => {
@@ -665,6 +669,20 @@ export const FlowEditorPage: React.FC = () => {
   const commandBarFarItems = useMemo(
     () => [
       {
+        key: 'exportToggle',
+        onRender: () => (
+          <Button
+            variant={showExport ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setShowExport(!showExport)}
+            className="h-8 mr-1"
+          >
+            <Download className="w-4 h-4 mr-1" />
+            Export Data
+          </Button>
+        ),
+      },
+      {
         key: 'viewToggle',
         onRender: () => (
           <div className="flex items-center gap-1 mr-2">
@@ -690,7 +708,7 @@ export const FlowEditorPage: React.FC = () => {
         )
       },
     ],
-    [viewMode]
+    [viewMode, showExport]
   );
 
   return (
@@ -704,6 +722,17 @@ export const FlowEditorPage: React.FC = () => {
         onClose={() => setValidationPaneIsOpen(false)}
       />
       <CommandBar items={commandBarItems} farItems={commandBarFarItems} />
+      {showExport && (
+        <div className="p-3 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <ExportActions
+            serviceType="power-automate"
+            context={{
+              envId: activeSource?.context?.envId || '',
+              flowId: activeSource?.context?.flowId || '',
+            }}
+          />
+        </div>
+      )}
       {!!definition && (
         <div className={editorContainerClassName}>
           {viewMode === 'actions' ? (

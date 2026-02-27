@@ -19,7 +19,9 @@ import { PreviousRunsPage } from './features/previous-runs/PreviousRunsPage';
 import { SharePointPage } from './features/sharepoint/SharePointPage';
 import { IntunePage } from './features/intune/IntunePage';
 import { FormsPage } from './features/forms/FormsPage';
+import { GraphPage } from './features/graph/GraphPage';
 import { useEffect, useState } from 'react';
+import { WorkspaceProvider } from './common/providers/WorkspaceContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DataSource } from './common/types/dataSource';
 import './styles/globals.css';
@@ -49,9 +51,11 @@ function App() {
     <HashRouter>
       <MultiServiceApiProvider>
         <ApiProviderContext.Provider value={apiProviderRoot}>
-          <DataSourceProvider>
-            <AppContent legacyApi={apiProviderRoot} />
-          </DataSourceProvider>
+          <WorkspaceProvider>
+            <DataSourceProvider>
+              <AppContent legacyApi={apiProviderRoot} />
+            </DataSourceProvider>
+          </WorkspaceProvider>
         </ApiProviderContext.Provider>
       </MultiServiceApiProvider>
     </HashRouter>
@@ -137,6 +141,7 @@ function AppContent({ legacyApi }: { legacyApi: { isApiReady: boolean } }) {
                   <Route path="sharepoint" element={<div className="flex-1 overflow-auto"><SharePointPage /></div>} />
                   <Route path="intune" element={<div className="flex-1 overflow-auto"><IntunePage /></div>} />
                   <Route path="forms" element={<div className="flex-1 overflow-auto"><FormsPage /></div>} />
+                  <Route path="graph" element={<div className="flex-1 overflow-auto"><GraphPage /></div>} />
                 </Route>
               </Routes>
             </div>

@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
 } from 'lucide-react';
 import type { DataSource, DataSourceGroup } from '../common/types/dataSource';
+import { WorkspacePanel } from '../common/components/WorkspacePanel';
 
 const SERVICE_ICONS: Record<string, React.ReactNode> = {
   'power-automate': <Activity className="w-4 h-4" />,
@@ -172,6 +173,8 @@ export const DataSourceSidebar: React.FC = () => {
             ))
           )}
         </div>
+
+        <WorkspacePanel />
 
         {sources.length > 0 && (
           <div className="px-3 py-2 border-t dark:border-gray-800">

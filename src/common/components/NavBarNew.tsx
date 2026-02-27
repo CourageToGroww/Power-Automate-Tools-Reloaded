@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
-import { Activity, Globe, HardDrive, FileText, Layers, PanelLeft } from 'lucide-react';
+import { Activity, Globe, HardDrive, FileText, Layers, PanelLeft, Network } from 'lucide-react';
 import { RelayToggle } from '../../components/RelayToggle';
 import { useMultiServiceApi } from '../providers/MultiServiceApiProvider';
 import { useDataSources } from '../../contexts/DataSourceContext';
@@ -26,6 +26,7 @@ export const NavBar: React.FC = () => {
     { id: 'sharepoint', label: 'SharePoint', path: '/sharepoint', service: 'sharepoint', icon: <Globe className="w-3.5 h-3.5" /> },
     { id: 'intune', label: 'Intune', path: '/intune', service: 'intune', icon: <HardDrive className="w-3.5 h-3.5" /> },
     { id: 'forms', label: 'Forms', path: '/forms', service: 'forms', icon: <FileText className="w-3.5 h-3.5" /> },
+    { id: 'graph', label: 'Graph', path: '/graph', service: 'graph', icon: <Network className="w-3.5 h-3.5" /> },
   ];
 
   const currentPath = location.pathname;

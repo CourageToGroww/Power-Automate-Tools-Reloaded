@@ -1,7 +1,8 @@
-import { Actions } from "./common/types/backgroundActions";
+import { Actions, ExecuteExportAction, ExportAllForWorkspace } from "./common/types/backgroundActions";
 import { TokenStore } from "./common/services/TokenStore";
 import { detectService, ALL_M365_URL_FILTERS, ServiceType, ServiceContext } from "./common/services/ServiceDetector";
 import { DataSource } from "./common/types/dataSource";
+import { getActionById, getActionsForService } from "./common/types/exportActions";
 
 interface LegacyState {
   url?: URL;
@@ -15,6 +16,29 @@ const tokenStore = new TokenStore();
 
 // Data source capture state
 let pendingSources: DataSource[] = [];
+
+// Cached flow definitions captured by content scripts
+interface CachedFlowEntry {
+  envId: string;
+  flowId: string;
+  displayName: string;
+  flowData: any;
+  capturedAt: number;
+}
+const flowDefinitionCache = new Map<string, CachedFlowEntry>();
+
+function cacheFlowDefinition(envId: string, flowId: string, flowData: any) {
+  const key = `${envId}:${flowId}`;
+  const displayName = flowData?.properties?.displayName || `Flow ${flowId.substring(0, 8)}`;
+  flowDefinitionCache.set(key, {
+    envId,
+    flowId,
+    displayName,
+    flowData,
+    capturedAt: Date.now(),
+  });
+  debugLog('Cached flow definition:', displayName, `(${key})`);
+}
 
 // Relay state
 let relayEnabled = false;
@@ -343,6 +367,27 @@ chrome.runtime.onMessage.addListener(
         handleRelayToggle(action.enabled, sendResponse);
         return true;
 
+      case 'flow-definition-captured':
+        handleFlowDefinitionCaptured(action, sender);
+        sendResponse();
+        break;
+
+      case 'get-cached-flow':
+        handleGetCachedFlow(action, sendResponse);
+        break;
+
+      case 'get-all-cached-flows':
+        handleGetAllCachedFlows(sendResponse);
+        break;
+
+      case 'execute-export':
+        handleExecuteExport(action, sendResponse);
+        return true;
+
+      case 'export-all-workspace':
+        handleExportAllWorkspace(action, sendResponse);
+        return true;
+
       default:
         sendResponse();
         break;
@@ -452,6 +497,77 @@ async function handleGetServiceData(
   }
 }
 
+// ─── Export execution engine ─────────────────────────────────────────────────
+
+function handleExecuteExport(
+  request: ExecuteExportAction,
+  sendResponse: (response: any) => void
+) {
+  const { actionId, context } = request;
+  const action = getActionById(actionId);
+  if (!action) {
+    sendResponse({ type: 'export-action-result', actionId, data: null, error: 'Unknown action' });
+    return;
+  }
+  const url = action.endpoint(context);
+  const service = action.serviceType as ServiceType;
+  const tokenInfo = tokenStore.getToken(service) || tokenStore.getToken('graph' as ServiceType);
+  if (!tokenInfo?.token) {
+    sendResponse({ type: 'export-action-result', actionId, data: null, error: `No auth token for ${service}` });
+    return;
+  }
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${tokenInfo.token}`,
+    'Accept': 'application/json',
+    ...action.headers,
+  };
+  fetch(url, { headers })
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+      return r.json();
+    })
+    .then(raw => {
+      const data = action.transform(raw);
+      sendResponse({ type: 'export-action-result', actionId, data, error: undefined });
+    })
+    .catch(err => {
+      sendResponse({ type: 'export-action-result', actionId, data: null, error: err.message });
+    });
+}
+
+async function handleExportAllWorkspace(
+  request: ExportAllForWorkspace,
+  sendResponse: (response: any) => void
+) {
+  const results: Array<{ actionId: string; data: any; error?: string }> = [];
+  for (const { serviceType, context } of request.sourceContexts) {
+    const actions = getActionsForService(serviceType);
+    for (const action of actions) {
+      if (action.requiresContext?.some(k => !context[k])) continue;
+      try {
+        const url = action.endpoint(context);
+        const tokenInfo = tokenStore.getToken(serviceType as ServiceType) || tokenStore.getToken('graph' as ServiceType);
+        if (!tokenInfo?.token) {
+          results.push({ actionId: action.id, data: null, error: `No token for ${serviceType}` });
+          continue;
+        }
+        const headers: Record<string, string> = {
+          'Authorization': `Bearer ${tokenInfo.token}`,
+          'Accept': 'application/json',
+          ...action.headers,
+        };
+        const r = await fetch(url, { headers });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const raw = await r.json();
+        results.push({ actionId: action.id, data: action.transform(raw) });
+      } catch (err: any) {
+        results.push({ actionId: action.id, data: null, error: err.message });
+      }
+    }
+  }
+  sendResponse({ type: 'export-all-result', results });
+}
+
 // ─── Relay management ───────────────────────────────────────────────────────
 
 async function handleRelayToggle(enabled: boolean, sendResponse: (resp: any) => void) {
@@ -464,14 +580,18 @@ async function handleRelayToggle(enabled: boolean, sendResponse: (resp: any) => 
     for (const cred of tokenStore.exportCredentials()) {
       sendCredentialToRelay(cred.service, cred.token, cred.apiUrl, cred.context);
     }
+    // Push active workspace data to relay
+    await pushWorkspaceToRelay();
   } else {
     disconnectRelay();
   }
 
+  const connected = relayTransport !== 'none';
   sendResponse({
     type: 'relay-status',
-    connected: relayTransport !== 'none',
+    connected,
     transport: relayTransport,
+    error: connected ? undefined : 'Could not connect to MCP relay. Ensure the relay server is running on port 8321.',
   });
 }
 
@@ -506,20 +626,24 @@ async function connectRelay() {
 
   if (nativeConnected) return;
 
-  // Fall back to HTTP
+  // Fall back to HTTP with retry
   debugLog('Trying HTTP relay...');
-  try {
-    const resp = await fetch('http://127.0.0.1:8321/api/status');
-    if (resp.ok) {
-      relayTransport = 'http';
-      debugLog('Connected via HTTP relay');
-      return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch('http://127.0.0.1:8321/api/health');
+      if (resp.ok) {
+        relayTransport = 'http';
+        debugLog('Connected via HTTP relay');
+        return;
+      }
+    } catch {
+      debugLog(`HTTP relay attempt ${attempt + 1} failed`);
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
     }
-  } catch {
-    debugLog('HTTP relay not available');
   }
 
   relayTransport = 'none';
+  debugLog('All relay connection methods failed');
 }
 
 function disconnectRelay() {
@@ -549,6 +673,98 @@ function sendCredentialToRelay(
       body: JSON.stringify(payload),
     }).catch((err) => debugError('Failed to send credentials to HTTP relay:', err));
   }
+}
+
+async function pushWorkspaceToRelay() {
+  if (!relayEnabled || relayTransport === 'none') return;
+  try {
+    const result = await chrome.storage.local.get('workbench_active_workspace');
+    const workspace = result.workbench_active_workspace;
+    if (!workspace) return;
+
+    if (relayTransport === 'http') {
+      await fetch('http://127.0.0.1:8321/api/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workspace),
+      });
+      debugLog('Workspace data pushed to relay');
+    }
+  } catch (err) {
+    debugError('Failed to push workspace to relay:', err);
+  }
+}
+
+// Re-push workspace data when it changes in storage
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.workbench_active_workspace && relayEnabled) {
+    pushWorkspaceToRelay();
+  }
+});
+
+// ─── Flow definition capture handlers ────────────────────────────────────────
+
+function handleFlowDefinitionCaptured(
+  action: { type: 'flow-definition-captured'; envId: string; flowId: string; flowData: any },
+  sender: chrome.runtime.MessageSender
+) {
+  debugLog('Flow definition captured from content script:', action.flowId);
+  cacheFlowDefinition(action.envId, action.flowId, action.flowData);
+
+  // Auto-create a DataSource for this captured flow so it appears in the sidebar
+  const source: DataSource = {
+    id: crypto.randomUUID(),
+    serviceType: 'power-automate',
+    context: {
+      envId: action.envId,
+      flowId: action.flowId,
+      captured: 'true',
+    },
+    label: action.flowData?.properties?.displayName || `Flow ${action.flowId.substring(0, 8)}`,
+    sourceUrl: sender.tab?.url || '',
+    originTabId: sender.tab?.id,
+    capturedAt: Date.now(),
+  };
+
+  sendToAppTabOrQueue(source);
+}
+
+function handleGetCachedFlow(
+  action: { type: 'get-cached-flow'; envId: string; flowId: string },
+  sendResponse: (response: any) => void
+) {
+  const key = `${action.envId}:${action.flowId}`;
+  const cached = flowDefinitionCache.get(key);
+
+  if (cached) {
+    debugLog('Returning cached flow definition for:', key);
+    sendResponse({
+      type: 'cached-flow-response',
+      flowData: cached.flowData,
+      envId: cached.envId,
+      flowId: cached.flowId,
+    });
+  } else {
+    debugLog('No cached flow definition for:', key);
+    sendResponse({
+      type: 'cached-flow-response',
+      flowData: null,
+    });
+  }
+}
+
+function handleGetAllCachedFlows(sendResponse: (response: any) => void) {
+  const flows = Array.from(flowDefinitionCache.values()).map((entry) => ({
+    envId: entry.envId,
+    flowId: entry.flowId,
+    displayName: entry.displayName,
+    capturedAt: entry.capturedAt,
+  }));
+
+  sendResponse({
+    type: 'all-cached-flows-response',
+    flows,
+  });
 }
 
 // ─── Legacy helpers ─────────────────────────────────────────────────────────

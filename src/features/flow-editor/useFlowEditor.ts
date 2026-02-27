@@ -92,11 +92,26 @@ export const useFlowEditor = () => {
             try {
               debugLog('Fetching flow data...');
               setIsLoading(true);
-              
-              const flowUrl = getFlowUrl(envId, flowId);
-              debugLog('Flow URL:', flowUrl);
-              
-              const flow = await api.get(flowUrl);
+
+              let flow: any = null;
+
+              // Try API first, then fall back to cached definition
+              try {
+                const flowUrl = getFlowUrl(envId, flowId);
+                debugLog('Flow URL:', flowUrl);
+                flow = await api.get(flowUrl);
+              } catch (apiError) {
+                debugError('API fetch failed, trying cached definition:', apiError);
+                flow = await getCachedFlowDefinition(envId, flowId);
+                if (flow) {
+                  debugLog('Using cached flow definition');
+                }
+              }
+
+              if (!flow) {
+                throw new Error('Could not load flow from API or cache');
+              }
+
               debugLog('Flow data received:', {
                 displayName: flow.properties?.displayName,
                 hasDefinition: !!flow.properties?.definition,
@@ -131,7 +146,7 @@ export const useFlowEditor = () => {
 
               debugLog('Flow data loaded successfully');
               addMessage(`Flow "${flow.properties.displayName}" loaded successfully.`);
-              
+
             } catch (error) {
               debugError('Error fetching flow:', error);
               const errorMessage = error instanceof Error ? error.message : String(error);
@@ -143,7 +158,37 @@ export const useFlowEditor = () => {
               setIsLoading(false);
             }
           } else if (envId && flowId && !api.isApiReady) {
-            debugLog('Waiting for API to be ready...');
+            // API not ready yet - try cached definition immediately
+            debugLog('API not ready, trying cached definition...');
+            setIsLoading(true);
+            try {
+              const flow = await getCachedFlowDefinition(envId, flowId);
+              if (flow?.properties?.definition) {
+                const flowDefinition = {
+                  $schema: editorSchema,
+                  connectionReferences: flow.properties.connectionReferences || {},
+                  definition: flow.properties.definition,
+                };
+
+                setData({
+                  name: flow.properties.displayName || 'Untitled Flow',
+                  environment: flow.properties.environment,
+                  definition: JSON.stringify(flowDefinition, null, 2),
+                });
+
+                debugLog('Loaded flow from cache (API not ready)');
+                addMessage(
+                  `Flow "${flow.properties.displayName}" loaded from cache. Save is disabled until API is ready.`,
+                  MessageBarType.warning
+                );
+              } else {
+                debugLog('No cached definition available, waiting for API...');
+              }
+            } catch {
+              debugLog('Cache lookup failed, waiting for API...');
+            } finally {
+              setIsLoading(false);
+            }
           }
         })();
       }, [envId, flowId, api.isApiReady]);
@@ -335,4 +380,27 @@ function getFlowUrl(envId: string | null, flowId: string | null) {
     throw new Error('Missing environment ID or flow ID');
   }
   return `providers/Microsoft.ProcessSimple/environments/${envId}/flows/${flowId}`;
+}
+
+function getCachedFlowDefinition(
+  envId: string,
+  flowId: string
+): Promise<any | null> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'get-cached-flow', envId, flowId },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            debugError('Failed to get cached flow:', chrome.runtime.lastError);
+            resolve(null);
+            return;
+          }
+          resolve(response?.flowData ?? null);
+        }
+      );
+    } catch {
+      resolve(null);
+    }
+  });
 }
