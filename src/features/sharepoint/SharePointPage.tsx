@@ -1,27 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { useServiceApi, useMultiServiceApi } from '../../common/providers/MultiServiceApiProvider';
-import { useSites, useLists, useListItems, fetchFullListJson } from './useSharePoint';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useServiceApi } from '../../common/providers/MultiServiceApiProvider';
+import { useSites, useLists, fetchFullListJson } from './useSharePoint';
 import { useDataSources } from '../../contexts/DataSourceContext';
 import { ExportActions } from '../../common/components/ExportActions';
+import { ServiceEditor } from '../../common/components/ServiceEditor';
+import { SHAREPOINT_TABS } from './sharepointEditorConfig';
+import type { ServiceContext } from '../../common/types/serviceEditor';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { ScrollArea } from '../../components/ui/scroll-area';
-import { JsonTreeViewer } from '../../components/ui/json-tree-viewer';
 import { cn } from '../../lib/utils';
 import {
   Globe,
   List,
   RefreshCw,
   ChevronRight,
-  ChevronDown,
   AlertCircle,
-  Columns,
-  FileText,
   Unplug,
   ArrowLeft,
   Copy,
-  Download,
   ClipboardCheck,
   Loader2,
 } from 'lucide-react';
@@ -81,287 +79,18 @@ const LoadingSpinner: React.FC<{ label?: string }> = ({ label }) => (
   </div>
 );
 
-interface ListDetailPanelProps {
-  siteId: string;
-  listId: string;
-  listName: string;
-  onBack: () => void;
+/** Build a SharePoint REST API base URL from an active data source */
+function deriveSiteUrl(activeSource: ReturnType<typeof useDataSources>['activeSource']): string | undefined {
+  if (!activeSource || activeSource.serviceType !== 'sharepoint') return undefined;
+  try {
+    const url = new URL(activeSource.sourceUrl);
+    const siteMatch = /\/sites\/([^/?#]+)/i.exec(url.pathname);
+    if (!siteMatch) return undefined;
+    return `https://${url.hostname}/sites/${siteMatch[1]}`;
+  } catch {
+    return undefined;
+  }
 }
-
-const ListDetailPanel: React.FC<ListDetailPanelProps> = ({ siteId, listId, listName, onBack }) => {
-  const {
-    items,
-    columns,
-    isLoadingItems,
-    isLoadingColumns,
-    itemsError,
-    columnsError,
-    refetchItems,
-    refetchColumns,
-  } = useListItems(siteId, listId);
-  const client = useServiceApi('sharepoint');
-  const { activeSource } = useDataSources();
-  const [showColumns, setShowColumns] = useState(true);
-  const [showItems, setShowItems] = useState(true);
-  const [selectedColumnFormatting, setSelectedColumnFormatting] = useState<string | null>(null);
-  const [fullJsonLoading, setFullJsonLoading] = useState(false);
-  const [fullJsonCopied, setFullJsonCopied] = useState(false);
-
-  const spCtx = React.useMemo(() => {
-    if (!activeSource || activeSource.serviceType !== 'sharepoint') return null;
-    try {
-      const url = new URL(activeSource.sourceUrl);
-      const siteMatch = /\/sites\/([^/?#]+)/i.exec(url.pathname);
-      if (!siteMatch) return null;
-      return { baseUrl: `https://${url.hostname}/sites/${siteMatch[1]}` };
-    } catch { return null; }
-  }, [activeSource]);
-
-  const handleGetFullJson = async () => {
-    setFullJsonLoading(true);
-    setFullJsonCopied(false);
-    try {
-      const result = await fetchFullListJson(client, spCtx, siteId, listId, listName);
-      const json = JSON.stringify(result, null, 2);
-      await navigator.clipboard.writeText(json);
-      setFullJsonCopied(true);
-      setTimeout(() => setFullJsonCopied(false), 3000);
-    } catch (err) {
-      console.error('Failed to get full list JSON:', err);
-    } finally {
-      setFullJsonLoading(false);
-    }
-  };
-
-  const handleDownloadFullJson = async () => {
-    setFullJsonLoading(true);
-    try {
-      const result = await fetchFullListJson(client, spCtx, siteId, listId, listName);
-      const json = JSON.stringify(result, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${listName.replace(/[^a-zA-Z0-9-_]/g, '_')}_full_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (err) {
-      console.error('Failed to download full list JSON:', err);
-    } finally {
-      setFullJsonLoading(false);
-    }
-  };
-
-  const visibleColumns = columns.filter(c => !c.hidden);
-
-  const formattingData = selectedColumnFormatting
-    ? columns.find(c => c.name === selectedColumnFormatting)
-    : null;
-
-  return (
-    <div className="space-y-4">
-      {/* Header with back navigation */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0">
-          <ArrowLeft className="w-4 h-4 mr-1" />
-          Back
-        </Button>
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold truncate">{listName}</h2>
-          <p className="text-xs text-muted-foreground">
-            {visibleColumns.length} columns, {items.length} items loaded
-          </p>
-        </div>
-        <div className="ml-auto flex gap-2 shrink-0 flex-wrap justify-end">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleGetFullJson}
-            disabled={fullJsonLoading}
-            title="Copy full list JSON (schema + all items) to clipboard"
-          >
-            {fullJsonLoading ? (
-              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-            ) : fullJsonCopied ? (
-              <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
-            ) : (
-              <Copy className="w-3.5 h-3.5 mr-1" />
-            )}
-            <span className="hidden sm:inline">{fullJsonCopied ? 'Copied!' : 'Copy Full JSON'}</span>
-            <span className="sm:hidden">{fullJsonCopied ? 'Copied!' : 'JSON'}</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownloadFullJson}
-            disabled={fullJsonLoading}
-            title="Download full list JSON file"
-          >
-            <Download className="w-3.5 h-3.5 mr-1" />
-            <span className="hidden sm:inline">Download</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={refetchColumns} disabled={isLoadingColumns}>
-            <RefreshCw className={cn('w-3.5 h-3.5 mr-1', isLoadingColumns && 'animate-spin')} />
-            <span className="hidden sm:inline">Schema</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={refetchItems} disabled={isLoadingItems}>
-            <RefreshCw className={cn('w-3.5 h-3.5 mr-1', isLoadingItems && 'animate-spin')} />
-            <span className="hidden sm:inline">Items</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Column Schema section */}
-      <Card>
-        <CardHeader
-          className="cursor-pointer py-3 px-4"
-          onClick={() => setShowColumns(!showColumns)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {showColumns ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )}
-              <Columns className="w-4 h-4 text-muted-foreground" />
-              <CardTitle className="text-sm">Columns / Schema</CardTitle>
-            </div>
-            <Badge variant="secondary">{visibleColumns.length}</Badge>
-          </div>
-        </CardHeader>
-        {showColumns && (
-          <CardContent className="pt-0 px-4 pb-4">
-            {columnsError && <ErrorMessage message={columnsError} onRetry={refetchColumns} />}
-            {isLoadingColumns ? (
-              <LoadingSpinner label="Loading columns..." />
-            ) : (
-              <div className="overflow-x-auto -mx-4 px-4">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground whitespace-nowrap">Name</th>
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground whitespace-nowrap">Display Name</th>
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground whitespace-nowrap hidden sm:table-cell">Type</th>
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground whitespace-nowrap hidden md:table-cell">Required</th>
-                      <th className="text-left py-2 pr-4 font-medium text-muted-foreground whitespace-nowrap hidden lg:table-cell">Read Only</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleColumns.map((col) => {
-                      const colType = col.text ? 'Text'
-                        : col.number ? 'Number'
-                        : col.choice ? 'Choice'
-                        : col.dateTime ? 'DateTime'
-                        : col.lookup ? 'Lookup'
-                        : col.boolean ? 'Boolean'
-                        : col.calculated ? 'Calculated'
-                        : col.personOrGroup ? 'Person'
-                        : 'Unknown';
-
-                      return (
-                        <tr
-                          key={col.id}
-                          className="border-b last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
-                          onClick={() => setSelectedColumnFormatting(
-                            selectedColumnFormatting === col.name ? null : col.name
-                          )}
-                        >
-                          <td className="py-2 pr-4 font-mono text-xs">{col.name}</td>
-                          <td className="py-2 pr-4">{col.displayName}</td>
-                          <td className="py-2 pr-4 hidden sm:table-cell">
-                            <Badge variant="outline" className="text-xs">{colType}</Badge>
-                          </td>
-                          <td className="py-2 pr-4 hidden md:table-cell">
-                            {col.required ? (
-                              <Badge variant="default" className="text-xs">Yes</Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">No</span>
-                            )}
-                          </td>
-                          <td className="py-2 pr-4 hidden lg:table-cell">
-                            {col.readOnly ? (
-                              <Badge variant="secondary" className="text-xs">Yes</Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">No</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {/* Column detail / formatting viewer */}
-            {formattingData && (
-              <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2">
-                  Column Details: {formattingData.displayName}
-                </h4>
-                <JsonTreeViewer data={formattingData} defaultExpanded={2} />
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
-
-      {/* Items section */}
-      <Card>
-        <CardHeader
-          className="cursor-pointer py-3 px-4"
-          onClick={() => setShowItems(!showItems)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {showItems ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )}
-              <FileText className="w-4 h-4 text-muted-foreground" />
-              <CardTitle className="text-sm">Items</CardTitle>
-            </div>
-            <Badge variant="secondary">{items.length}</Badge>
-          </div>
-        </CardHeader>
-        {showItems && (
-          <CardContent className="pt-0 px-4 pb-4">
-            {itemsError && <ErrorMessage message={itemsError} onRetry={refetchItems} />}
-            {isLoadingItems ? (
-              <LoadingSpinner label="Loading items..." />
-            ) : items.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">
-                No items found in this list.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {items.map((item) => (
-                  <Card key={item.id} className="bg-muted/20">
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <Badge variant="outline" className="text-xs">ID: {item.id}</Badge>
-                        {item.lastModifiedDateTime && (
-                          <span className="text-xs text-muted-foreground">
-                            Modified: {formatDate(item.lastModifiedDateTime)}
-                          </span>
-                        )}
-                      </div>
-                      <JsonTreeViewer
-                        data={item.fields}
-                        defaultExpanded={0}
-                        className="text-xs"
-                      />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
-    </div>
-  );
-};
 
 export const SharePointPage: React.FC = () => {
   const client = useServiceApi('sharepoint');
@@ -422,29 +151,44 @@ export const SharePointPage: React.FC = () => {
     return <NotConnected />;
   }
 
-  // If a list is selected, show detail panel
+  // Build ServiceContext for the editor when a list is selected
+  const siteUrl = spContext?.baseUrl || deriveSiteUrl(activeSource);
+  const editorContext = useMemo<ServiceContext>(() => ({
+    client,
+    siteUrl: siteUrl || '',
+    listId: selectedListId || '',
+    listName: selectedListName,
+  }), [client, siteUrl, selectedListId, selectedListName]);
+
+  // If a list is selected, show the Service Editor
   if (selectedSiteId && selectedListId) {
     return (
       <div className="h-full flex flex-col bg-background">
-        <div className="p-4 md:p-6 border-b">
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight">SharePoint</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            {sites.find(s => s.id === selectedSiteId)?.displayName || 'Site'} / {selectedListName}
-          </p>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="p-4 md:p-6">
-            <ListDetailPanel
-              siteId={selectedSiteId}
-              listId={selectedListId}
-              listName={selectedListName}
-              onBack={() => {
-                setSelectedListId(null);
-                setSelectedListName('');
-              }}
-            />
+        <div className="px-4 py-3 border-b flex items-center gap-3 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setSelectedListId(null); setSelectedListName(''); }}
+            className="shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Back
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold truncate">
+              {selectedListName}
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {sites.find(s => s.id === selectedSiteId)?.displayName || 'Site'} &middot; SharePoint Editor
+            </p>
           </div>
-        </ScrollArea>
+        </div>
+        <div className="flex-1 min-h-0">
+          <ServiceEditor
+            tabs={SHAREPOINT_TABS}
+            context={editorContext}
+          />
+        </div>
       </div>
     );
   }
