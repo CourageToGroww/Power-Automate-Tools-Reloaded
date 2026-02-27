@@ -235,6 +235,80 @@ export function useLists(siteId: string | null) {
   };
 }
 
+/**
+ * Fetch full list JSON (schema + all items) in one call.
+ * Returns a combined object ready for clipboard/download.
+ */
+export async function fetchFullListJson(
+  client: { get: (endpoint: string) => Promise<unknown>; isReady: boolean },
+  spCtx: { baseUrl: string } | null,
+  siteId: string,
+  listId: string,
+  listName: string,
+): Promise<{ listName: string; columns: any[]; items: any[] }> {
+  let columns: any[] = [];
+  let items: any[] = [];
+
+  if (spCtx) {
+    // SP REST API - columns
+    const colResp = await client.get(
+      `${spCtx.baseUrl}/_api/web/lists(guid'${listId}')/fields?$filter=Hidden eq false&$top=500`
+    ) as any;
+    columns = (colResp?.value || [])
+      .filter((f: any) =>
+        f.CanBeDeleted !== false &&
+        !['ContentType','Attachments','Edit','DocIcon','ItemChildCount','FolderChildCount','_ComplianceFlags'].includes(f.InternalName)
+      )
+      .map((f: any) => ({
+        Title: f.Title,
+        InternalName: f.InternalName,
+        Type: f.TypeAsString,
+        Required: Boolean(f.Required),
+        Choices: f.Choices?.results || f.Choices || null,
+      }));
+
+    // SP REST API - items (paginated to get all)
+    let nextUrl: string | null = `${spCtx.baseUrl}/_api/web/lists(guid'${listId}')/items?$top=500`;
+    while (nextUrl) {
+      const resp = await client.get(nextUrl) as any;
+      const batch = resp?.value || [];
+      for (const item of batch) {
+        const { Id, ID, Created, Modified, AuthorId, EditorId, ...fields } = item;
+        items.push({ id: Id || ID, ...fields });
+      }
+      nextUrl = resp?.['odata.nextLink'] || resp?.['@odata.nextLink'] || null;
+      // Safety: cap at 5000 items
+      if (items.length >= 5000) break;
+    }
+  } else {
+    // Graph API fallback - columns
+    const colResp = await client.get(`/sites/${siteId}/lists/${listId}/columns`) as any;
+    columns = (colResp?.value || [])
+      .filter((c: any) => !c.hidden)
+      .map((c: any) => ({
+        Title: c.displayName,
+        InternalName: c.name,
+        Type: c.type || (c.text ? 'Text' : c.number ? 'Number' : c.choice ? 'Choice' : 'Unknown'),
+        Required: Boolean(c.required),
+        Choices: c.choice?.choices || null,
+      }));
+
+    // Graph API fallback - items
+    let nextUrl: string | null = `/sites/${siteId}/lists/${listId}/items?$expand=fields&$top=200`;
+    while (nextUrl) {
+      const resp = await client.get(nextUrl) as any;
+      const batch = resp?.value || [];
+      for (const item of batch) {
+        items.push({ id: item.id, ...(item.fields || {}) });
+      }
+      nextUrl = resp?.['@odata.nextLink'] || null;
+      if (items.length >= 5000) break;
+    }
+  }
+
+  return { listName, columns, items };
+}
+
 export interface UseListItemsOptions {
   filter?: string;
   select?: string[];

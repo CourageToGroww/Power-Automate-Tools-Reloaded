@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useServiceApi } from '../../common/providers/MultiServiceApiProvider';
-import { useSites, useLists, useListItems } from './useSharePoint';
+import { useServiceApi, useMultiServiceApi } from '../../common/providers/MultiServiceApiProvider';
+import { useSites, useLists, useListItems, fetchFullListJson } from './useSharePoint';
 import { useDataSources } from '../../contexts/DataSourceContext';
 import { ExportActions } from '../../common/components/ExportActions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
@@ -20,6 +20,10 @@ import {
   FileText,
   Unplug,
   ArrowLeft,
+  Copy,
+  Download,
+  ClipboardCheck,
+  Loader2,
 } from 'lucide-react';
 
 function formatDate(dateString: string | undefined): string {
@@ -95,9 +99,57 @@ const ListDetailPanel: React.FC<ListDetailPanelProps> = ({ siteId, listId, listN
     refetchItems,
     refetchColumns,
   } = useListItems(siteId, listId);
+  const client = useServiceApi('sharepoint');
+  const { activeSource } = useDataSources();
   const [showColumns, setShowColumns] = useState(true);
   const [showItems, setShowItems] = useState(true);
   const [selectedColumnFormatting, setSelectedColumnFormatting] = useState<string | null>(null);
+  const [fullJsonLoading, setFullJsonLoading] = useState(false);
+  const [fullJsonCopied, setFullJsonCopied] = useState(false);
+
+  const spCtx = React.useMemo(() => {
+    if (!activeSource || activeSource.serviceType !== 'sharepoint') return null;
+    try {
+      const url = new URL(activeSource.sourceUrl);
+      const siteMatch = /\/sites\/([^/?#]+)/i.exec(url.pathname);
+      if (!siteMatch) return null;
+      return { baseUrl: `https://${url.hostname}/sites/${siteMatch[1]}` };
+    } catch { return null; }
+  }, [activeSource]);
+
+  const handleGetFullJson = async () => {
+    setFullJsonLoading(true);
+    setFullJsonCopied(false);
+    try {
+      const result = await fetchFullListJson(client, spCtx, siteId, listId, listName);
+      const json = JSON.stringify(result, null, 2);
+      await navigator.clipboard.writeText(json);
+      setFullJsonCopied(true);
+      setTimeout(() => setFullJsonCopied(false), 3000);
+    } catch (err) {
+      console.error('Failed to get full list JSON:', err);
+    } finally {
+      setFullJsonLoading(false);
+    }
+  };
+
+  const handleDownloadFullJson = async () => {
+    setFullJsonLoading(true);
+    try {
+      const result = await fetchFullListJson(client, spCtx, siteId, listId, listName);
+      const json = JSON.stringify(result, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${listName.replace(/[^a-zA-Z0-9-_]/g, '_')}_full_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      console.error('Failed to download full list JSON:', err);
+    } finally {
+      setFullJsonLoading(false);
+    }
+  };
 
   const visibleColumns = columns.filter(c => !c.hidden);
 
@@ -119,7 +171,34 @@ const ListDetailPanel: React.FC<ListDetailPanelProps> = ({ siteId, listId, listN
             {visibleColumns.length} columns, {items.length} items loaded
           </p>
         </div>
-        <div className="ml-auto flex gap-2 shrink-0">
+        <div className="ml-auto flex gap-2 shrink-0 flex-wrap justify-end">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleGetFullJson}
+            disabled={fullJsonLoading}
+            title="Copy full list JSON (schema + all items) to clipboard"
+          >
+            {fullJsonLoading ? (
+              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+            ) : fullJsonCopied ? (
+              <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
+            ) : (
+              <Copy className="w-3.5 h-3.5 mr-1" />
+            )}
+            <span className="hidden sm:inline">{fullJsonCopied ? 'Copied!' : 'Copy Full JSON'}</span>
+            <span className="sm:hidden">{fullJsonCopied ? 'Copied!' : 'JSON'}</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadFullJson}
+            disabled={fullJsonLoading}
+            title="Download full list JSON file"
+          >
+            <Download className="w-3.5 h-3.5 mr-1" />
+            <span className="hidden sm:inline">Download</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={refetchColumns} disabled={isLoadingColumns}>
             <RefreshCw className={cn('w-3.5 h-3.5 mr-1', isLoadingColumns && 'animate-spin')} />
             <span className="hidden sm:inline">Schema</span>
@@ -292,8 +371,28 @@ export const SharePointPage: React.FC = () => {
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [selectedListName, setSelectedListName] = useState<string>('');
   const [autoSelected, setAutoSelected] = useState(false);
+  const [quickJsonLoading, setQuickJsonLoading] = useState<string | null>(null);
+  const [quickJsonCopied, setQuickJsonCopied] = useState<string | null>(null);
 
   const { lists, isLoading: isLoadingLists, error: listsError, refetch: refetchLists } = useLists(selectedSiteId);
+
+  const handleQuickJson = async (e: React.MouseEvent, listId: string, listName: string) => {
+    e.stopPropagation(); // Don't navigate to detail panel
+    setQuickJsonLoading(listId);
+    setQuickJsonCopied(null);
+    try {
+      const spCtxLocal = spContext ? { baseUrl: spContext.baseUrl } : null;
+      const result = await fetchFullListJson(client, spCtxLocal, selectedSiteId!, listId, listName);
+      const json = JSON.stringify(result, null, 2);
+      await navigator.clipboard.writeText(json);
+      setQuickJsonCopied(listId);
+      setTimeout(() => setQuickJsonCopied(null), 3000);
+    } catch (err) {
+      console.error('Failed to get list JSON:', err);
+    } finally {
+      setQuickJsonLoading(null);
+    }
+  };
 
   // Auto-select site when loaded from DataSource context
   useEffect(() => {
@@ -475,6 +574,7 @@ export const SharePointPage: React.FC = () => {
                               <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Title</th>
                               <th className="text-left py-2 pr-4 font-medium text-muted-foreground hidden sm:table-cell">Item Count</th>
                               <th className="text-left py-2 pr-4 font-medium text-muted-foreground hidden md:table-cell">Last Modified</th>
+                              <th className="text-right py-2 pr-4 font-medium text-muted-foreground">JSON</th>
                               <th className="w-8"></th>
                             </tr>
                           </thead>
@@ -501,6 +601,25 @@ export const SharePointPage: React.FC = () => {
                                 </td>
                                 <td className="py-2.5 pr-4 text-muted-foreground text-xs hidden md:table-cell">
                                   {formatDate(list.lastModifiedDateTime)}
+                                </td>
+                                <td className="py-2.5 pr-4 text-right">
+                                  <Button
+                                    variant={quickJsonCopied === list.id ? "default" : "outline"}
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    disabled={quickJsonLoading === list.id}
+                                    onClick={(e) => handleQuickJson(e, list.id, list.displayName)}
+                                    title="Copy full list JSON to clipboard"
+                                  >
+                                    {quickJsonLoading === list.id ? (
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    ) : quickJsonCopied === list.id ? (
+                                      <ClipboardCheck className="w-3 h-3 mr-1" />
+                                    ) : (
+                                      <Copy className="w-3 h-3 mr-1" />
+                                    )}
+                                    {quickJsonCopied === list.id ? 'Copied!' : 'Get JSON'}
+                                  </Button>
                                 </td>
                                 <td className="py-2.5">
                                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
